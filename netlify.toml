@@ -20,8 +20,9 @@
 
   # Turbopack's build cache records env values internally. It never ships to
   # the browser or the functions, so it is excluded rather than failing the
-  # build on a real secret that is only ever in the cache.
-  SECRETS_SCAN_OMIT_PATHS = ".next/cache/**"
+  # build on a real secret that is only ever in the cache. The Next.js runtime
+  # keeps its copy under .netlify/.next/cache, hence both paths.
+  SECRETS_SCAN_OMIT_PATHS = ".next/cache/**,.netlify/.next/cache/**"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
