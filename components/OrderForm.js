@@ -3,19 +3,18 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/context/ToastContext';
-import { MAX_ITEMS, emptyItem, emptyOrder, normaliseOrder, validateOrder } from '@/lib/order';
+import { useAgent } from '@/context/AgentContext';
+import { CURRENCY } from '@/data/site';
+import { emptyOrder, normaliseOrder, validateOrder } from '@/lib/order';
 import { TOKENIZATION_KEY } from '@/lib/collect';
 import { cn } from '@/lib/utils';
 import CardFields from './CardFields';
-import AddressFields from './order/AddressFields';
-import ItemFields from './order/ItemFields';
+import { BillingFields, ShippingFields } from './order/AddressFields';
 import OrderConfirmation from './order/OrderConfirmation';
 import OrderSummary from './order/OrderSummary';
-import Button from './ui/Button';
 import Field, { Fieldset } from './ui/Field';
 import Notice from './ui/Notice';
 import Panel from './ui/Panel';
-import { PlusIcon } from './ui/Icons';
 
 /** Immutable deep set by dotted path: setIn(state, 'customer.email', v). */
 function setIn(object, path, value) {
@@ -36,7 +35,8 @@ function scrollToFirstError() {
 
 /**
  * The whole "take an order over the phone" flow on one page:
- * customer → shipping → products → card → charge.
+ * card + amount → billing details → shipping → charge. The agent taking the
+ * order comes from the header picker and is stamped on the record.
  *
  * Submit sequence:
  *   1. validate the order locally (same rules the server applies);
@@ -49,6 +49,7 @@ function scrollToFirstError() {
 export default function OrderForm({ gatewayConfigured, transactionType }) {
   const router = useRouter();
   const { toast } = useToast();
+  const { agent } = useAgent();
 
   const [order, setOrder] = useState(emptyOrder);
   const [errors, setErrors] = useState({});
@@ -60,9 +61,11 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
   // Collect.js delivers the token asynchronously; read the order through a ref
   // so the callback sees the values as they are at that moment.
   const orderRef = useRef(order);
+  const agentRef = useRef(agent);
   useEffect(() => {
     orderRef.current = order;
-  }, [order]);
+    agentRef.current = agent;
+  }, [order, agent]);
 
   const setField = useCallback((path, value) => {
     setOrder((current) => setIn(current, path, value));
@@ -73,38 +76,12 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
     });
   }, []);
 
-  const updateItem = useCallback((index, patch) => {
-    setOrder((current) => ({
-      ...current,
-      items: current.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
-    }));
-    setErrors((current) => {
-      const prefix = `items.${index}.`;
-      const next = Object.fromEntries(
-        Object.entries(current).filter(([key]) => !(key.startsWith(prefix) && key.slice(prefix.length) in patch)),
-      );
-      return Object.keys(next).length === Object.keys(current).length ? current : next;
-    });
-  }, []);
-
-  function addItem() {
-    setOrder((current) =>
-      current.items.length >= MAX_ITEMS ? current : { ...current, items: [...current.items, emptyItem()] },
-    );
-  }
-
-  function removeItem(index) {
-    setOrder((current) => ({ ...current, items: current.items.filter((_, i) => i !== index) }));
-    // Item errors are indexed; drop them all rather than reshuffle keys.
-    setErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith('items.'))));
-  }
-
   function handleSubmit(event) {
     event.preventDefault();
     if (status !== 'idle') return;
     setGatewayError(null);
 
-    const { valid, errors: nextErrors } = validateOrder(normaliseOrder(order));
+    const { valid, errors: nextErrors } = validateOrder(normaliseOrder({ ...order, agent }));
     setErrors(nextErrors);
     if (!valid) {
       toast({ title: 'Check the highlighted fields', variant: 'error' });
@@ -146,7 +123,7 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
       const res = await fetch('/api/charge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: orderRef.current, paymentToken, card }),
+        body: JSON.stringify({ order: { ...orderRef.current, agent: agentRef.current }, paymentToken, card }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -235,39 +212,75 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
           </Notice>
         )}
 
+        {!agent && (
+          <Notice tone="warning" title="Select your name first">
+            Choose your name in the <strong>Agent</strong> picker at the top of the page so this order is recorded
+            against you.
+          </Notice>
+        )}
+
         <Panel>
-          <Fieldset legend="Customer" step="01" description="Billing details — the address is used for the card's AVS check.">
-            <AddressFields prefix="customer" values={order.customer} errors={errors} onChange={setField} autoCompleteSection="billing" />
+          <Fieldset legend="Billing Information" step="01" description="The card, the amount, and the cardholder's details for the AVS check.">
+            <CardFields ref={cardRef} onToken={handleToken} onTimeout={handleTimeout} disabled={busy} />
+
             <div className="grid gap-5 sm:grid-cols-2">
               <Field
-                id="customer-email"
-                label="Email Address"
-                type="email"
-                value={order.customer.email}
-                error={errors['customer.email']}
-                onChange={(value) => setField('customer.email', value)}
-                autoComplete="email"
-                placeholder="customer@example.com"
+                id="amount"
+                label="Amount"
+                prefix="$"
+                inputMode="decimal"
+                value={order.amount}
+                error={errors.amount}
+                onChange={(value) => setField('amount', value)}
+                placeholder="00.00"
                 required
+                disabled={busy}
               />
               <Field
-                id="customer-phone"
-                label="Phone Number"
-                type="tel"
-                value={order.customer.phone}
-                error={errors['customer.phone']}
-                onChange={(value) => setField('customer.phone', value)}
-                autoComplete="tel"
-                placeholder="(512) 555-0123"
-                required
+                id="currency"
+                label="Currency"
+                as="select"
+                options={[{ value: CURRENCY.code, label: CURRENCY.code }]}
+                value={CURRENCY.code}
+                onChange={() => {}}
               />
             </div>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field
+                id="invoiceNumber"
+                label="Invoice Number"
+                value={order.invoiceNumber}
+                error={errors.invoiceNumber}
+                onChange={(value) => setField('invoiceNumber', value)}
+                placeholder="e.g. 483920"
+                disabled={busy}
+              />
+              <Field
+                id="description"
+                label="Description"
+                value={order.description}
+                error={errors.description}
+                onChange={(value) => setField('description', value)}
+                placeholder="e.g. custom logo"
+                hint="Optional. Recorded against the NMI transaction."
+                disabled={busy}
+              />
+            </div>
+
+            <BillingFields values={order.customer} errors={errors} onChange={setField} disabled={busy} />
+
+            {gatewayError && (
+              <Notice tone="error" title="Payment not completed">
+                {gatewayError}
+              </Notice>
+            )}
           </Fieldset>
         </Panel>
 
         <Panel>
           <Fieldset
-            legend="Shipping"
+            legend="Shipping Address"
             step="02"
             action={
               <label className="flex cursor-pointer items-center gap-3 text-sm text-muted">
@@ -277,7 +290,7 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
                   onChange={(event) => setField('shipToBilling', event.target.checked)}
                   className="h-4 w-4 accent-[#c9a227]"
                 />
-                Same as billing address
+                Same as Billing
               </label>
             }
           >
@@ -286,61 +299,7 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
                 The order ships to the billing address above.
               </p>
             ) : (
-              <AddressFields prefix="shipping" values={order.shipping} errors={errors} onChange={setField} autoCompleteSection="shipping" />
-            )}
-          </Fieldset>
-        </Panel>
-
-        <Panel>
-          <Fieldset
-            legend="Products"
-            step="03"
-            description="What is being printed. Prices pre-fill from the website catalogue and can be overridden per line."
-            action={
-              <Button type="button" variant="outline" size="sm" onClick={addItem} disabled={order.items.length >= MAX_ITEMS}>
-                <PlusIcon size={14} />
-                Add product
-              </Button>
-            }
-          >
-            {errors.items && (
-              <p role="alert" className="text-sm text-red-400">
-                {errors.items}
-              </p>
-            )}
-            <div className="space-y-5">
-              {order.items.map((item, index) => (
-                <ItemFields
-                  key={item.key}
-                  index={index}
-                  item={item}
-                  errors={errors}
-                  onChange={updateItem}
-                  onRemove={removeItem}
-                  canRemove={order.items.length > 1}
-                />
-              ))}
-            </div>
-            <Field
-              id="notes"
-              label="Order Notes"
-              as="textarea"
-              value={order.notes}
-              error={errors.notes}
-              onChange={(value) => setField('notes', value)}
-              placeholder="Rush job, delivery instructions, anything the production team should know."
-              hint="Optional. Recorded against the NMI transaction."
-            />
-          </Fieldset>
-        </Panel>
-
-        <Panel>
-          <Fieldset legend="Card Details" step="04" description="Charged through NMI. Enter the card exactly as the customer reads it out.">
-            <CardFields ref={cardRef} onToken={handleToken} onTimeout={handleTimeout} disabled={busy} />
-            {gatewayError && (
-              <Notice tone="error" title="Payment not completed">
-                {gatewayError}
-              </Notice>
+              <ShippingFields values={order.shipping} errors={errors} onChange={setField} disabled={busy} />
             )}
           </Fieldset>
         </Panel>
@@ -354,8 +313,8 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
       <div className="lg:sticky lg:top-28 lg:col-span-4 lg:self-start">
         <OrderSummary
           order={order}
+          agent={agent}
           errors={errors}
-          onChange={setField}
           status={status}
           canCharge={gatewayConfigured && Boolean(TOKENIZATION_KEY)}
           transactionType={transactionType}

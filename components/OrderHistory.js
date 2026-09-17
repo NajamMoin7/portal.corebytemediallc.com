@@ -83,9 +83,12 @@ export default function OrderHistory({ records = [], total = null, limit = null,
                     <Badge tone={record.transactionType === 'auth' ? 'outline' : 'gold'}>
                       {record.transactionType === 'auth' ? 'Authorised' : 'Paid'}
                     </Badge>
+                    {record.agent && <Badge tone="outline">{record.agent}</Badge>}
                   </p>
                   <p className="mt-1 truncate text-xs text-muted">
-                    {formatDateTime(record.createdAt)} · {order.items.length} item{order.items.length === 1 ? '' : 's'}
+                    {formatDateTime(record.createdAt)}
+                    {order.invoiceNumber ? ` · Inv. ${order.invoiceNumber}` : ''}
+                    {order.description ? ` · ${order.description}` : ''}
                     {card?.last4 ? ` · ${card.type ? `${card.type} ` : ''}•••• ${card.last4}` : ''}
                   </p>
                 </div>
@@ -120,47 +123,25 @@ export default function OrderHistory({ records = [], total = null, limit = null,
                     <Detail label="AVS / CVV">
                       {result.avsResponse || '—'} / {result.cvvResponse || '—'}
                     </Detail>
+                    <Detail label="Agent">{record.agent || '—'}</Detail>
                     {record.placedBy && <Detail label="Placed by">{record.placedBy}</Detail>}
-                    <Detail label="Email">{order.customer.email}</Detail>
-                    <Detail label="Phone">{formatPhone(order.customer.phone)}</Detail>
-                    <Detail label="Ship to">
-                      {(() => {
-                        const to = order.shipToBilling ? order.customer : order.shipping;
-                        return `${to.address1}${to.address2 ? `, ${to.address2}` : ''}, ${to.city}, ${to.state} ${to.zip}`;
-                      })()}
-                    </Detail>
-                    {order.notes && <Detail label="Notes">{order.notes}</Detail>}
+                    <Detail label="Invoice #">{order.invoiceNumber || '—'}</Detail>
+                    <Detail label="Description">{order.description || '—'}</Detail>
                     </dl>
                   </div>
 
                   <div className="space-y-3">
-                    <h3 className="eyebrow">Items</h3>
-                    <ul className="space-y-2">
-                      {order.items.map((item, index) => (
-                        <li key={item.key || index} className="flex justify-between gap-4">
-                          <span className="min-w-0 text-muted">
-                            <span className="text-cream">{item.quantity}×</span> {item.name}
-                            <span className="block text-xs text-faint">
-                              {[item.size, item.color, item.printMethod, item.placement].filter(Boolean).join(' · ')}
-                            </span>
-                          </span>
-                          <span className="shrink-0 tabular-nums text-cream">{formatPrice(item.quantity * item.unitPrice)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <dl className="space-y-1 border-t border-line/60 pt-3 text-xs text-muted">
-                      <div className="flex justify-between">
-                        <dt>Subtotal</dt>
-                        <dd className="tabular-nums">{formatPrice(totals.subtotal)}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt>Shipping</dt>
-                        <dd className="tabular-nums">{formatPrice(totals.shipping)}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt>Tax</dt>
-                        <dd className="tabular-nums">{formatPrice(totals.tax)}</dd>
-                      </div>
+                    <h3 className="eyebrow">Customer</h3>
+                    <dl className="space-y-3">
+                    {order.customer.company && <Detail label="Company">{order.customer.company}</Detail>}
+                    <Detail label="Email">{order.customer.email}</Detail>
+                    <Detail label="Phone">{formatPhone(order.customer.phone)}</Detail>
+                    {order.customer.fax && <Detail label="Fax">{formatPhone(order.customer.fax)}</Detail>}
+                    {order.customer.website && <Detail label="Website">{order.customer.website}</Detail>}
+                    <Detail label="Bill to">{formatAddress(order.customer)}</Detail>
+                    <Detail label="Ship to">
+                      {order.shipToBilling ? 'Same as billing' : formatAddress(order.shipping)}
+                    </Detail>
                     </dl>
                   </div>
                 </div>
@@ -185,6 +166,18 @@ export default function OrderHistory({ records = [], total = null, limit = null,
       )}
     </div>
   );
+}
+
+function formatAddress(to) {
+  return [
+    [to.firstName, to.lastName].filter(Boolean).join(' '),
+    to.company,
+    to.address1,
+    to.address2,
+    `${to.city}, ${to.state} ${to.zip}`,
+  ]
+    .filter(Boolean)
+    .join(', ');
 }
 
 function Detail({ label, children }) {

@@ -8,9 +8,9 @@ import { LockIcon } from './ui/Icons';
 import { Skeleton } from './ui/LoadingSpinner';
 
 const FIELDS = [
-  { id: 'ccnumber', label: 'Card Number', placeholder: '0000 0000 0000 0000', span: 'sm:col-span-2' },
-  { id: 'ccexp', label: 'Expiry', placeholder: 'MM / YY', span: '' },
-  { id: 'cvv', label: 'CVV', placeholder: '•••', span: '' },
+  { id: 'ccnumber', label: 'Credit Card Number', placeholder: '4111 1111 1111 1111', span: 'sm:col-span-2' },
+  { id: 'ccexp', label: 'Expiration Date', placeholder: 'MM / YY', span: '' },
+  { id: 'cvv', label: 'CVV / CID', placeholder: '123', span: '' },
 ];
 
 /**

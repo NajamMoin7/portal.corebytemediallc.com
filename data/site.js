@@ -44,13 +44,11 @@ export const CURRENCY = {
 export const COUNTRY = { code: 'US', name: 'United States' };
 
 /**
- * Default charges pre-filled on a new order. Staff can override both per order;
- * these only save typing on the common case.
+ * Business timezone. "Today", "this month" and "this year" in the agent
+ * totals are worked out in this zone, not in the server's (Netlify runs in
+ * UTC). IANA name — see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
  */
-export const ORDER_DEFAULTS = {
-  shipping: 5.95,
-  tax: 0,
-};
+export const TIMEZONE = 'America/New_York';
 
 export const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },

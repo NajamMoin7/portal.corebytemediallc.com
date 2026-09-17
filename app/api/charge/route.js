@@ -4,8 +4,8 @@ import { createTransaction, isGatewayConfigured } from '@/lib/nmi';
 import { isDatabaseConfigured } from '@/lib/mongodb';
 import { sanitiseCard, saveOrderRecord } from '@/lib/orders-db';
 import {
-  itemsSummary,
   normaliseOrder,
+  orderDescription,
   orderTotals,
   shippingAddress,
   validateOrder,
@@ -20,9 +20,9 @@ import { CURRENCY } from '@/data/site';
  * it returned alongside (reduced to last four / type / expiry for the order
  * record — it is never sent to the gateway).
  *
- * The order is re-normalised and re-validated here, and the amount is
- * recomputed from the line items, so the client cannot charge a different
- * figure from the one its form shows.
+ * The order is re-normalised and re-validated here (including that the
+ * agent is one of `data/agents.js`), so the client cannot smuggle in bad
+ * values.
  *
  * On approval the order is written to MongoDB. A failed write after a
  * successful charge is reported as `saved: false` rather than as an error,
@@ -76,13 +76,13 @@ export async function POST(request) {
     amount: totals.total.toFixed(2),
     currency: CURRENCY.code,
     orderid: order.orderId,
-    order_description: itemsSummary(order.items),
-    tax: totals.tax.toFixed(2),
-    shipping: totals.shipping.toFixed(2),
+    order_description: orderDescription(order),
+    ponumber: order.invoiceNumber || undefined,
 
     // Billing details drive AVS on the card.
     first_name: order.customer.firstName,
     last_name: order.customer.lastName,
+    company: order.customer.company,
     address1: order.customer.address1,
     address2: order.customer.address2,
     city: order.customer.city,
@@ -90,31 +90,27 @@ export async function POST(request) {
     zip: order.customer.zip,
     country: order.customer.country,
     phone: order.customer.phone,
+    fax: order.customer.fax,
     email: order.customer.email,
+    website: order.customer.website,
 
     shipping_first_name: shipTo.firstName,
     shipping_last_name: shipTo.lastName,
+    shipping_company: shipTo.company,
     shipping_address1: shipTo.address1,
     shipping_address2: shipTo.address2,
     shipping_city: shipTo.city,
     shipping_state: shipTo.state,
     shipping_zip: shipTo.zip,
     shipping_country: order.customer.country,
-    shipping_email: order.customer.email,
+    shipping_email: order.shipToBilling ? order.customer.email : order.shipping.email || order.customer.email,
 
     // Free-text fields that appear against the transaction in the NMI portal.
     merchant_defined_field_1: 'Core Byte Media portal',
-    merchant_defined_field_2: `Placed by ${session.email}`,
-    merchant_defined_field_3: order.items
-      .map((item) => [item.sku, item.printMethod, item.placement].filter(Boolean).join(' / '))
-      .join(' | ')
-      .slice(0, 255),
-    merchant_defined_field_4: order.notes.slice(0, 255),
-    merchant_defined_field_5: order.items
-      .map((item) => item.artworkUrl)
-      .filter(Boolean)
-      .join(' ')
-      .slice(0, 255),
+    merchant_defined_field_2: `Agent: ${order.agent}`,
+    merchant_defined_field_3: `Placed by ${session.email}`,
+    merchant_defined_field_4: order.invoiceNumber,
+    merchant_defined_field_5: order.description,
 
     customer_receipt: process.env.NMI_CUSTOMER_RECEIPT === 'true' ? 'true' : undefined,
     ipaddress: ipAddress,
@@ -157,6 +153,7 @@ export async function POST(request) {
         orderId: order.orderId,
         createdAt: new Date(),
         placedBy: session.email,
+        agent: order.agent,
         transactionType,
         order,
         totals,
@@ -179,6 +176,7 @@ export async function POST(request) {
       orderId: order.orderId,
       createdAt: new Date().toISOString(),
       placedBy: session.email,
+      agent: order.agent,
       transactionType,
       order,
       totals,

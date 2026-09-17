@@ -12,7 +12,7 @@ export default function NewOrderPage() {
       <PageHeader
         eyebrow="New Order"
         title="Take a print order"
-        description="Enter the customer, what they are ordering and their card. The card is charged through NMI as soon as you submit."
+        description="Select your name at the top, then enter the card, the amount and the customer's details. The card is charged through NMI as soon as you submit."
         className="mb-10"
       />
       <OrderForm

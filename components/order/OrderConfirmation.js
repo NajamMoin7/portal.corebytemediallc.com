@@ -94,6 +94,9 @@ export default function OrderConfirmation({ record, onNewOrder }) {
             <Row label="Order reference">
               <Copyable value={order.orderId} onCopy={() => copy(order.orderId, 'Order reference')} />
             </Row>
+            <Row label="Agent">{record.agent || '—'}</Row>
+            <Row label="Invoice number">{order.invoiceNumber || '—'}</Row>
+            <Row label="Description">{order.description || '—'}</Row>
             <Row label="NMI transaction ID">
               <Copyable value={result.transactionId} onCopy={() => copy(result.transactionId, 'Transaction ID')} />
             </Row>
@@ -113,78 +116,65 @@ export default function OrderConfirmation({ record, onNewOrder }) {
             <Row label="Name">
               {order.customer.firstName} {order.customer.lastName}
             </Row>
+            {order.customer.company && <Row label="Company">{order.customer.company}</Row>}
             <Row label="Email">{order.customer.email}</Row>
             <Row label="Phone">{formatPhone(order.customer.phone)}</Row>
-            <Row label="Ship to">
+            {order.customer.fax && <Row label="Fax">{formatPhone(order.customer.fax)}</Row>}
+            {order.customer.website && (
+              <Row label="Website">
+                <a href={order.customer.website} target="_blank" rel="noopener noreferrer" className="break-all text-gold hover:text-champagne">
+                  {order.customer.website}
+                </a>
+              </Row>
+            )}
+            <Row label="Bill to">
               <address className="not-italic leading-relaxed text-cream">
-                {shipTo.firstName} {shipTo.lastName}
-                <br />
-                {shipTo.address1}
-                {shipTo.address2 && (
+                {order.customer.address1}
+                {order.customer.address2 && (
                   <>
                     <br />
-                    {shipTo.address2}
+                    {order.customer.address2}
                   </>
                 )}
                 <br />
-                {shipTo.city}, {shipTo.state} {shipTo.zip}
+                {order.customer.city}, {order.customer.state} {order.customer.zip}
               </address>
             </Row>
-            {order.notes && <Row label="Notes">{order.notes}</Row>}
+            <Row label="Ship to">
+              {order.shipToBilling ? (
+                <span className="text-muted">Same as billing</span>
+              ) : (
+                <address className="not-italic leading-relaxed text-cream">
+                  {shipTo.firstName} {shipTo.lastName}
+                  {shipTo.company && (
+                    <>
+                      <br />
+                      {shipTo.company}
+                    </>
+                  )}
+                  <br />
+                  {shipTo.address1}
+                  {shipTo.address2 && (
+                    <>
+                      <br />
+                      {shipTo.address2}
+                    </>
+                  )}
+                  <br />
+                  {shipTo.city}, {shipTo.state} {shipTo.zip}
+                  {shipTo.email && (
+                    <>
+                      <br />
+                      {shipTo.email}
+                    </>
+                  )}
+                </address>
+              )}
+            </Row>
           </dl>
         </Panel>
       </div>
 
-      <Panel className="space-y-5">
-        <h3 className="eyebrow">Items</h3>
-        <ul className="divide-y divide-line/60">
-          {order.items.map((item, index) => (
-            <li key={item.key || index} className="flex flex-col gap-2 py-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1 text-sm">
-                <p className="text-cream">
-                  {item.quantity}× {item.name}
-                  {item.sku && <span className="ml-2 text-xs text-faint">{item.sku}</span>}
-                </p>
-                <p className="text-xs text-muted">
-                  {[item.size, item.color, item.printMethod, item.placement].filter(Boolean).join(' · ') || 'No options'}
-                </p>
-                {item.artworkUrl && (
-                  <a
-                    href={item.artworkUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block break-all text-xs text-gold hover:text-champagne"
-                  >
-                    {item.artworkUrl}
-                  </a>
-                )}
-                {item.notes && <p className="text-xs text-muted">{item.notes}</p>}
-              </div>
-              <span className="shrink-0 text-sm tabular-nums text-cream">
-                {formatPrice(item.quantity * item.unitPrice)}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <dl className="ml-auto max-w-xs space-y-2 border-t border-line/60 pt-4 text-sm">
-          <div className="flex justify-between text-muted">
-            <dt>Subtotal</dt>
-            <dd className="tabular-nums">{formatPrice(totals.subtotal)}</dd>
-          </div>
-          <div className="flex justify-between text-muted">
-            <dt>Shipping</dt>
-            <dd className="tabular-nums">{formatPrice(totals.shipping)}</dd>
-          </div>
-          <div className="flex justify-between text-muted">
-            <dt>Tax</dt>
-            <dd className="tabular-nums">{formatPrice(totals.tax)}</dd>
-          </div>
-          <div className="flex justify-between border-t border-line/60 pt-2 text-cream">
-            <dt>Total</dt>
-            <dd className="font-semibold tabular-nums text-gold">{formatPrice(totals.total)}</dd>
-          </div>
-        </dl>
-      </Panel>
     </div>
   );
 }

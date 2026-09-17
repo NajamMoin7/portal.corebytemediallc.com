@@ -1,11 +1,12 @@
 import Link from 'next/link';
+import AgentStats from '@/components/AgentStats';
 import OrderHistory from '@/components/OrderHistory';
 import PageHeader from '@/components/PageHeader';
 import Panel from '@/components/ui/Panel';
 import { ArrowRightIcon, CheckCircleIcon, AlertIcon, ListIcon, PlusIcon } from '@/components/ui/Icons';
 import { isGatewayConfigured, isTokenizationConfigured } from '@/lib/nmi';
 import { checkDatabaseConnection } from '@/lib/mongodb';
-import { loadOrderHistory } from '@/lib/orders-db';
+import { loadAgentStats, loadOrderHistory } from '@/lib/orders-db';
 import { getSession } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -20,7 +21,7 @@ const ACTIONS = [
     href: '/orders/new',
     Icon: PlusIcon,
     title: 'New order',
-    description: 'Enter a customer, their products and card, and charge it through NMI.',
+    description: "Enter the amount, the customer's billing and shipping details, and charge the card through NMI.",
     primary: true,
   },
   {
@@ -32,10 +33,11 @@ const ACTIONS = [
 ];
 
 export default async function DashboardPage() {
-  const [session, database, history] = await Promise.all([
+  const [session, database, history, stats] = await Promise.all([
     getSession(),
     checkDatabaseConnection(),
     loadOrderHistory({ limit: 5 }),
+    loadAgentStats(),
   ]);
   const checks = [
     { label: 'NMI public key (Collect.js)', ok: isTokenizationConfigured(), env: 'NEXT_PUBLIC_NMI_TOKENIZATION_KEY' },
@@ -59,7 +61,7 @@ export default async function DashboardPage() {
       <PageHeader
         eyebrow="Dashboard"
         title={`Welcome back${session?.email ? `, ${session.email.split('@')[0]}` : ''}`}
-        description="Take print orders over the phone or in person, charge the card, and keep a record of what was ordered."
+        description="Take orders over the phone or in person, charge the card, and keep a record of who took what."
         className="mb-10"
       />
 
@@ -131,6 +133,11 @@ export default async function DashboardPage() {
           )}
         </Panel>
       </div>
+
+      <section className="mt-12 space-y-5">
+        <h2 className="eyebrow">Agent totals</h2>
+        <AgentStats rows={stats.rows} error={stats.error} />
+      </section>
 
       <section className="mt-12 space-y-5">
         <div className="flex items-end justify-between gap-4">

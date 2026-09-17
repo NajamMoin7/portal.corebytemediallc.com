@@ -2,7 +2,6 @@
 
 import { formatPrice, parseMoney } from '@/lib/utils';
 import Button from '../ui/Button';
-import Field from '../ui/Field';
 import { Spinner } from '../ui/LoadingSpinner';
 import { CreditCardIcon } from '../ui/Icons';
 
@@ -12,20 +11,15 @@ const STATUS_LABEL = {
 };
 
 /**
- * Sidebar: the running total, the two adjustable charges and the charge
+ * Sidebar: who is taking the order, what is being charged and the charge
  * button. The sticky positioning lives on the grid column in OrderForm.
- * Totals here are for display — the server recomputes them from the line
- * items before anything is sent to NMI.
+ * The total here is for display — the server re-reads the amount from the
+ * request before anything is sent to NMI.
  */
-export default function OrderSummary({ order, errors, onChange, status, canCharge, transactionType }) {
-  const subtotal = order.items.reduce((sum, item) => {
-    const quantity = Number.parseInt(item.quantity, 10) || 0;
-    return sum + quantity * parseMoney(item.unitPrice);
-  }, 0);
-  const shipping = parseMoney(order.charges.shipping);
-  const tax = parseMoney(order.charges.tax);
-  const total = subtotal + shipping + tax;
+export default function OrderSummary({ order, agent, errors, status, canCharge, transactionType }) {
+  const total = parseMoney(order.amount);
   const busy = status !== 'idle';
+  const customerName = `${order.customer.firstName} ${order.customer.lastName}`.trim();
 
   return (
     <aside className="surface-card space-y-6 p-6">
@@ -36,67 +30,32 @@ export default function OrderSummary({ order, errors, onChange, status, canCharg
         </p>
       </div>
 
-      <ul className="space-y-3 border-t border-line/60 pt-5 text-sm">
-        {order.items.map((item, index) => {
-          const quantity = Number.parseInt(item.quantity, 10) || 0;
-          const options = [item.size, item.color].filter(Boolean).join(', ');
-          return (
-            <li key={item.key || index} className="flex justify-between gap-4">
-              <span className="min-w-0 text-muted">
-                <span className="text-cream">{quantity || '–'}×</span> {item.name || 'Product'}
-                {options && <span className="block truncate text-xs text-faint">{options}</span>}
-              </span>
-              <span className="shrink-0 tabular-nums text-cream">{formatPrice(quantity * parseMoney(item.unitPrice))}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <dl className="space-y-3 border-t border-line/60 pt-5 text-sm">
+        <Row label="Agent">
+          {agent ? (
+            <span className="text-cream">{agent}</span>
+          ) : (
+            <span className="text-gold">Select your name at the top</span>
+          )}
+        </Row>
+        <Row label="Customer">{customerName || <span className="text-faint">—</span>}</Row>
+        {order.customer.company && <Row label="Company">{order.customer.company}</Row>}
+        <Row label="Invoice #">{order.invoiceNumber || <span className="text-faint">—</span>}</Row>
+        <Row label="Description">
+          {order.description ? <span className="line-clamp-2">{order.description}</span> : <span className="text-faint">—</span>}
+        </Row>
+      </dl>
 
-      <div className="grid grid-cols-2 gap-4 border-t border-line/60 pt-5">
-        <Field
-          id="charges-shipping"
-          label="Shipping"
-          prefix="$"
-          inputMode="decimal"
-          value={order.charges.shipping}
-          error={errors['charges.shipping']}
-          onChange={(value) => onChange('charges.shipping', value)}
-          disabled={busy}
-        />
-        <Field
-          id="charges-tax"
-          label="Tax"
-          prefix="$"
-          inputMode="decimal"
-          value={order.charges.tax}
-          error={errors['charges.tax']}
-          onChange={(value) => onChange('charges.tax', value)}
-          disabled={busy}
-        />
-      </div>
-
-      <dl className="space-y-2 border-t border-line/60 pt-5 text-sm">
-        <div className="flex justify-between text-muted">
-          <dt>Subtotal</dt>
-          <dd className="tabular-nums">{formatPrice(subtotal)}</dd>
-        </div>
-        <div className="flex justify-between text-muted">
-          <dt>Shipping</dt>
-          <dd className="tabular-nums">{formatPrice(shipping)}</dd>
-        </div>
-        <div className="flex justify-between text-muted">
-          <dt>Tax</dt>
-          <dd className="tabular-nums">{formatPrice(tax)}</dd>
-        </div>
-        <div className="flex justify-between border-t border-line/60 pt-3 text-base text-cream">
+      <dl className="border-t border-line/60 pt-5">
+        <div className="flex justify-between text-base text-cream">
           <dt className="font-display">Total to charge</dt>
           <dd className="font-semibold tabular-nums text-gold">{formatPrice(total)}</dd>
         </div>
       </dl>
 
-      {errors.total && (
+      {(errors.agent || errors.amount) && (
         <p role="alert" className="text-xs text-red-400">
-          {errors.total}
+          {errors.agent || errors.amount}
         </p>
       )}
 
@@ -109,5 +68,14 @@ export default function OrderSummary({ order, errors, onChange, status, canCharg
         The card is charged immediately through NMI. Refunds and voids are handled in the NMI merchant portal.
       </p>
     </aside>
+  );
+}
+
+function Row({ label, children }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt className="shrink-0 text-muted">{label}</dt>
+      <dd className="min-w-0 text-right text-cream">{children}</dd>
+    </div>
   );
 }

@@ -7,6 +7,7 @@ import { NAV_LINKS } from '@/data/site';
 import { useToast } from '@/context/ToastContext';
 import { useScrolledPast } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
+import AgentPicker from './AgentPicker';
 import Logo from './Logo';
 import { CloseIcon, LogoutIcon, MenuIcon, UserIcon } from './ui/Icons';
 
@@ -103,7 +104,9 @@ export default function PortalHeader({ email }) {
           </nav>
 
           <div className="flex items-center gap-1">
-            <span className="hidden items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-muted md:inline-flex">
+            <AgentPicker className="mr-2 hidden lg:flex" />
+
+            <span className="hidden items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-muted xl:inline-flex">
               <UserIcon size={14} className="text-gold/70" />
               <span className="max-w-[14rem] truncate">{email}</span>
             </span>
@@ -160,6 +163,9 @@ export default function PortalHeader({ email }) {
             menuOpen ? 'translate-y-0 opacity-100' : '-translate-y-3 opacity-0',
           )}
         >
+          <div className="container-page border-b border-line/60 py-4">
+            <AgentPicker stacked />
+          </div>
           <ul className="container-page flex flex-col py-2">
             {NAV_LINKS.map((link) => {
               const active = isActive(link.href);

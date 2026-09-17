@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { BRAND, SITE_URL } from '@/data/site';
 import { getSession } from '@/lib/auth';
+import { AgentProvider } from '@/context/AgentContext';
 import PortalHeader from '@/components/PortalHeader';
 
 /**
@@ -13,7 +14,7 @@ export default async function PortalLayout({ children }) {
   if (!session) redirect('/login');
 
   return (
-    <>
+    <AgentProvider>
       <PortalHeader email={session.email} />
       <main id="main" className="flex flex-1 flex-col">
         {children}
@@ -26,6 +27,6 @@ export default async function PortalLayout({ children }) {
           </a>
         </div>
       </footer>
-    </>
+    </AgentProvider>
   );
 }

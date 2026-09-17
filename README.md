@@ -1,8 +1,10 @@
 # Core Byte Media LLC — Order Portal
 
-Internal staff portal for **portal.corebytemediallc.com**. Staff sign in, enter a customer's
-details and the print products they are ordering, take the card, and charge it through the
-NMI merchant gateway. Approved orders are saved to MongoDB. Built with Next.js 16 (App Router),
+Internal staff portal for **portal.corebytemediallc.com**. Staff sign in, pick their name in the
+agent picker, enter the amount and the customer's billing and shipping details, take the card,
+and charge it through the NMI merchant gateway. Approved orders are saved to MongoDB with the
+agent who took them, and the dashboard shows per-agent totals for today, this month, this year
+and all time. Built with Next.js 16 (App Router),
 Tailwind CSS v4 and JavaScript, using the same brand system as the public website. It is a standalone project — nothing is shared
 at runtime with corebytemediallc.com.
 
@@ -22,11 +24,11 @@ npm run lint
    tokenization key. The card number, expiry and CVV are typed into NMI-hosted iframes and
    never enter this app's DOM or its server. Collect.js returns a single-use `payment_token`.
 2. The browser POSTs the order and that token to `/api/charge`.
-3. The route re-validates the order, **recomputes the total from the line items**, and
+3. The route re-validates the order (including that the agent is one of `data/agents.js`) and
    submits a `sale` (or `auth`) to the NMI Payment API with the **private** security key.
-4. On approval the order, totals, gateway result (transaction ID, auth code, AVS/CVV) and the
-   card's last four digits are saved to the `orders` collection in MongoDB, and the record is
-   shown to staff. A failed save never fails the request — the card has already been charged —
+4. On approval the order, amount, agent, gateway result (transaction ID, auth code, AVS/CVV) and
+   the card's last four digits are saved to the `orders` collection in MongoDB, and the record
+   is shown to staff. A failed save never fails the request — the card has already been charged —
    it is reported on screen instead.
 
 Refunds, voids, captures and full reporting are done in the NMI merchant portal.
@@ -71,7 +73,9 @@ free tier (M0) is enough for this workload.
 
 The `corebyte-portal` database and its `orders` collection are created automatically on the
 first order; indexes (unique `orderId`, `createdAt`, `result.transactionId`,
-`order.customer.email`) are created on first use by `lib/orders-db.js`. Browse the data in
+`order.customer.email`, `agent`) are created on first use by `lib/orders-db.js`. The per-agent
+totals come from a single aggregation pipeline (`agentStats()`), with "today / this month / this
+year" worked out in the timezone set by `TIMEZONE` in `data/site.js`. Browse the data in
 Atlas under **Database → Browse Collections**.
 
 The dashboard's *Gateway status* panel pings the database, so a wrong URI or missing network
@@ -112,28 +116,33 @@ app/
   page.js                 redirects to /dashboard or /login
   login/                  sign-in page
   (portal)/layout.js      session guard + header/footer for every portal page
-  (portal)/dashboard/     quick actions, gateway + database status, recent orders
+  (portal)/dashboard/     quick actions, gateway + database status, agent totals, recent orders
   (portal)/orders/new/    the order + charge form
-  (portal)/orders/        order history from MongoDB
+  (portal)/orders/        agent totals + full order history from MongoDB
   api/auth/login|logout   session cookie set / clear
   api/charge              validates the order, calls NMI, saves the approved order
 components/
   OrderForm.js            form state, submit → tokenise → charge
   CardFields.js           Collect.js inline iframes
-  order/                  address, line item, summary and confirmation blocks
+  AgentPicker.js          "who is taking this order" pills in the header
+  AgentStats.js           per-agent totals table (day / month / year / all time)
+  order/                  billing + shipping fields, summary and confirmation blocks
   PortalHeader.js, LoginForm.js, OrderHistory.js, PageHeader.js
   ui/                     Button, Field, Icons, Badge, Notice, Panel, Toast, spinners
 lib/
   auth.js                 HMAC-signed session cookie (server only)
   nmi.js                  Payment API client + response codes (server only)
-  order.js                shared order shape, normalisation, validation, totals
+  order.js                shared order shape, normalisation, validation
   mongodb.js              cached MongoClient connection (server only)
   orders-db.js            orders collection: save, list, count, find (server only)
   collect.js              Collect.js loader
 data/
-  site.js                 brand, contact, currency, nav, order defaults
-  products.js             catalogue (names, SKUs, prices, sizes, colours)
+  site.js                 brand, contact, currency, nav, business timezone
+  agents.js               the staff who take orders — edit this to add or rename someone
   us-states.js
+context/
+  AgentContext.js         selected agent, remembered per browser
+  ToastContext.js
 ```
 
 ## Things to know
@@ -144,9 +153,9 @@ data/
   still the authority on the money: refunds, voids and captures are done there, by the
   transaction ID stored on each order. Only the card's last four digits, type and expiry are
   stored — never a full card number.
-- **Prices** pre-fill from `data/products.js` and can be overridden per line; the server
-  accepts the entered price (it is a staff tool) but caps quantity, unit price and order total
-  (`lib/order.js`).
-- **Product catalogue** is a copy of the website's. When products or prices change on the
-  site, update `data/products.js` here too.
+- **Agents** are the names in `data/agents.js`. The picker in the header remembers the choice
+  per browser; the form will not charge until a name is selected, and the server rejects any
+  name not in the list. Renaming an agent does not re-attribute their earlier orders.
+- **Amount** is entered directly (there is no product catalogue). The server caps it at
+  `MAX_AMOUNT` in `lib/order.js`.
 - The site sends `X-Robots-Tag: noindex` and a disallow-all `robots.txt`.
