@@ -11,5 +11,17 @@
 [build.environment]
   NODE_VERSION = "22"
 
+  # Netlify's secrets scanner searches the repo and build output for the value
+  # of every environment variable. These keys are not secrets: the NEXT_PUBLIC_
+  # ones are compiled into the browser bundle by design, and the rest are
+  # plain settings whose defaults also appear in the source. Scanning stays on
+  # for MONGODB_URI, NMI_SECURITY_KEY, PORTAL_PASSWORD and PORTAL_SESSION_SECRET.
+  SECRETS_SCAN_OMIT_KEYS = "MONGODB_DB,NEXT_PUBLIC_NMI_TOKENIZATION_KEY,NEXT_PUBLIC_NMI_COLLECT_JS_URL,NMI_API_URL,NMI_TRANSACTION_TYPE,NMI_CUSTOMER_RECEIPT,PORTAL_EMAIL,PORTAL_SESSION_HOURS"
+
+  # Turbopack's build cache records env values internally. It never ships to
+  # the browser or the functions, so it is excluded rather than failing the
+  # build on a real secret that is only ever in the cache.
+  SECRETS_SCAN_OMIT_PATHS = ".next/cache/**"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
