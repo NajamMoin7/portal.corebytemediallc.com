@@ -12,9 +12,10 @@ const STATUS_LABEL = {
 };
 
 /**
- * Sticky sidebar: the running total, the two adjustable charges and the
- * charge button. Totals here are for display — the server recomputes them
- * from the line items before anything is sent to NMI.
+ * Sidebar: the running total, the two adjustable charges and the charge
+ * button. The sticky positioning lives on the grid column in OrderForm.
+ * Totals here are for display — the server recomputes them from the line
+ * items before anything is sent to NMI.
  */
 export default function OrderSummary({ order, errors, onChange, status, canCharge, transactionType }) {
   const subtotal = order.items.reduce((sum, item) => {
@@ -27,7 +28,7 @@ export default function OrderSummary({ order, errors, onChange, status, canCharg
   const busy = status !== 'idle';
 
   return (
-    <aside className="surface-card space-y-6 p-6 lg:sticky lg:top-28">
+    <aside className="surface-card space-y-6 p-6">
       <div className="space-y-1">
         <span className="eyebrow">Order Summary</span>
         <p className="text-xs text-faint">

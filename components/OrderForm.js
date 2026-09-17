@@ -346,7 +346,12 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
         </Panel>
       </div>
 
-      <div className="lg:col-span-4">
+      {/*
+        Sticky must sit on the grid item itself: with `lg:items-start` the
+        item only wraps its content, so a sticky child would have no room to
+        travel. The item's containing block is the form, which spans the page.
+      */}
+      <div className="lg:sticky lg:top-28 lg:col-span-4 lg:self-start">
         <OrderSummary
           order={order}
           errors={errors}
