@@ -1,0 +1,15 @@
+# Netlify configuration for portal.corebytemediallc.com
+#
+# The Next.js runtime plugin turns route handlers (app/api/**) into Netlify
+# Functions, so the NMI charge endpoint runs server-side with access to the
+# private key. Environment variables are set in the Netlify UI, not here.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
