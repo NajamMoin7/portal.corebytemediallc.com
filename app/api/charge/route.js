@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { createTransaction, isGatewayConfigured } from '@/lib/nmi';
+import { isDatabaseConfigured } from '@/lib/mongodb';
+import { sanitiseCard, saveOrderRecord } from '@/lib/orders-db';
 import {
   itemsSummary,
   normaliseOrder,
@@ -15,12 +17,16 @@ import { CURRENCY } from '@/data/site';
  *
  * Body: `{ order, paymentToken, card }` where `paymentToken` is the single-use
  * token Collect.js produced in the browser and `card` is the masked summary
- * it returned alongside (kept only for the response and the local history —
- * it is never sent to the gateway).
+ * it returned alongside (reduced to last four / type / expiry for the order
+ * record — it is never sent to the gateway).
  *
  * The order is re-normalised and re-validated here, and the amount is
  * recomputed from the line items, so the client cannot charge a different
  * figure from the one its form shows.
+ *
+ * On approval the order is written to MongoDB. A failed write after a
+ * successful charge is reported as `saved: false` rather than as an error,
+ * because the card has already been charged and NMI holds the transaction.
  */
 export async function POST(request) {
   const session = await getSession();
@@ -59,6 +65,10 @@ export async function POST(request) {
   const totals = orderTotals(order);
   const shipTo = shippingAddress(order);
   const transactionType = process.env.NMI_TRANSACTION_TYPE === 'auth' ? 'auth' : 'sale';
+  const ipAddress =
+    request.headers.get('x-nf-client-connection-ip') ||
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    undefined;
 
   const fields = {
     type: transactionType,
@@ -107,10 +117,7 @@ export async function POST(request) {
       .slice(0, 255),
 
     customer_receipt: process.env.NMI_CUSTOMER_RECEIPT === 'true' ? 'true' : undefined,
-    ipaddress:
-      request.headers.get('x-nf-client-connection-ip') ||
-      request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-      undefined,
+    ipaddress: ipAddress,
   };
 
   let result;
@@ -129,11 +136,65 @@ export async function POST(request) {
     );
   }
 
+  if (!result.ok) {
+    return NextResponse.json({
+      ...result,
+      orderId: order.orderId,
+      amount: totals.total,
+      totals,
+      transactionType,
+    });
+  }
+
+  // The charge went through — record it. Nothing below may turn the response
+  // into a failure, or staff would retry and charge the customer twice.
+  let record = null;
+  let saved = false;
+  let saveError = null;
+  if (isDatabaseConfigured()) {
+    try {
+      record = await saveOrderRecord({
+        orderId: order.orderId,
+        createdAt: new Date(),
+        placedBy: session.email,
+        transactionType,
+        order,
+        totals,
+        card: body?.card,
+        result,
+        ipAddress: ipAddress ?? null,
+      });
+      saved = true;
+    } catch (error) {
+      console.error(`[charge] approved transaction ${result.transactionId} was not saved to the database`, error);
+      saveError = 'The payment was approved but the order could not be saved to the database. Note the transaction ID.';
+    }
+  } else {
+    saveError = 'The payment was approved but MONGODB_URI is not set, so the order was not saved. Note the transaction ID.';
+  }
+
+  if (!record) {
+    record = {
+      id: order.orderId,
+      orderId: order.orderId,
+      createdAt: new Date().toISOString(),
+      placedBy: session.email,
+      transactionType,
+      order,
+      totals,
+      card: sanitiseCard(body?.card),
+      result,
+    };
+  }
+
   return NextResponse.json({
     ...result,
     orderId: order.orderId,
     amount: totals.total,
     totals,
     transactionType,
+    saved,
+    saveError,
+    record,
   });
 }

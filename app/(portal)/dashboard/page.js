@@ -4,12 +4,16 @@ import PageHeader from '@/components/PageHeader';
 import Panel from '@/components/ui/Panel';
 import { ArrowRightIcon, CheckCircleIcon, AlertIcon, ListIcon, PlusIcon } from '@/components/ui/Icons';
 import { isGatewayConfigured, isTokenizationConfigured } from '@/lib/nmi';
+import { checkDatabaseConnection } from '@/lib/mongodb';
+import { loadOrderHistory } from '@/lib/orders-db';
 import { getSession } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 export const metadata = {
   title: 'Dashboard',
 };
+
+export const dynamic = 'force-dynamic';
 
 const ACTIONS = [
   {
@@ -23,12 +27,16 @@ const ACTIONS = [
     href: '/orders',
     Icon: ListIcon,
     title: 'Order history',
-    description: 'Orders charged from this browser, with transaction IDs for NMI lookups.',
+    description: 'Every approved order, with transaction IDs for NMI lookups.',
   },
 ];
 
 export default async function DashboardPage() {
-  const session = await getSession();
+  const [session, database, history] = await Promise.all([
+    getSession(),
+    checkDatabaseConnection(),
+    loadOrderHistory({ limit: 5 }),
+  ]);
   const checks = [
     { label: 'NMI public key (Collect.js)', ok: isTokenizationConfigured(), env: 'NEXT_PUBLIC_NMI_TOKENIZATION_KEY' },
     { label: 'NMI private key (charges)', ok: isGatewayConfigured(), env: 'NMI_SECURITY_KEY' },
@@ -36,6 +44,12 @@ export default async function DashboardPage() {
       label: 'Transaction mode',
       ok: true,
       value: process.env.NMI_TRANSACTION_TYPE === 'auth' ? 'Authorise only' : 'Sale (charge immediately)',
+    },
+    {
+      label: 'MongoDB (order records)',
+      ok: database.ok,
+      env: 'MONGODB_URI',
+      value: database.ok ? `Connected · ${database.database}` : database.reason,
     },
   ];
   const allGood = checks.every((check) => check.ok);
@@ -125,7 +139,7 @@ export default async function DashboardPage() {
             View all
           </Link>
         </div>
-        <OrderHistory limit={5} compact />
+        <OrderHistory records={history.records} total={history.total} error={history.error} limit={5} compact />
       </section>
     </div>
   );

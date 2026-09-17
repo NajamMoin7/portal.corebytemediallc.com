@@ -3,36 +3,33 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useToast } from '@/context/ToastContext';
-import { useIsHydrated } from '@/lib/hooks';
-import { clearOrderHistory, useOrderHistory } from '@/lib/orders-store';
 import { cn, formatDateTime, formatPhone, formatPrice } from '@/lib/utils';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
 import Notice from './ui/Notice';
 import Panel from './ui/Panel';
-import { Skeleton } from './ui/LoadingSpinner';
 import { ChevronDownIcon, CopyIcon, ReceiptIcon } from './ui/Icons';
 
 /**
- * Orders charged from this browser, newest first. `limit` trims the list for
- * the dashboard; the full page shows everything with a clear-history control.
+ * Orders from the database, newest first.
+ *
+ * The list is fetched on the server (see the dashboard and /orders pages) and
+ * handed in as `records`; this component only handles expanding a row and
+ * copying IDs. `total` is the count in the database, used for the "view all"
+ * link when `limit` trims the list. `error` is shown in place of the list
+ * when the database is unavailable.
  */
-export default function OrderHistory({ limit = null, compact = false }) {
-  const hydrated = useIsHydrated();
-  const records = useOrderHistory();
+export default function OrderHistory({ records = [], total = null, limit = null, compact = false, error = null }) {
   const { toast } = useToast();
   const [openId, setOpenId] = useState(null);
-  const [confirmClear, setConfirmClear] = useState(false);
 
-  const visible = limit ? records.slice(0, limit) : records;
+  const count = total ?? records.length;
 
-  if (!hydrated) {
+  if (error) {
     return (
-      <div className="space-y-3">
-        {Array.from({ length: compact ? 3 : 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-16 w-full" />
-        ))}
-      </div>
+      <Notice tone="error" title="Order history is unavailable">
+        {error}
+      </Notice>
     );
   }
 
@@ -43,10 +40,9 @@ export default function OrderHistory({ limit = null, compact = false }) {
           <ReceiptIcon size={24} />
         </span>
         <div className="space-y-1">
-          <p className="text-cream">No orders from this browser yet</p>
+          <p className="text-cream">No orders yet</p>
           <p className="max-w-sm text-sm text-muted">
-            Orders charged here appear in this list. The full record of every transaction is in the NMI merchant
-            portal.
+            Every approved charge is saved here. Refunds and voids are handled in the NMI merchant portal.
           </p>
         </div>
         <Button href="/orders/new" variant="outline" size="sm">
@@ -67,15 +63,8 @@ export default function OrderHistory({ limit = null, compact = false }) {
 
   return (
     <div className="space-y-4">
-      {!compact && (
-        <Notice tone="info">
-          This list is stored in this browser only. Search NMI by the order reference or transaction ID for the
-          authoritative record, refunds and voids.
-        </Notice>
-      )}
-
       <ul className="space-y-3">
-        {visible.map((record) => {
+        {records.map((record) => {
           const open = openId === record.id;
           const { order, result, totals, card } = record;
           const customerName = `${order.customer.firstName} ${order.customer.lastName}`.trim();
@@ -91,13 +80,13 @@ export default function OrderHistory({ limit = null, compact = false }) {
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-cream">
                     <span className="font-medium">{customerName || 'Customer'}</span>
                     <span className="text-xs tabular-nums text-faint">{record.id}</span>
-                    <Badge tone={result.transactionType === 'auth' ? 'outline' : 'gold'}>
-                      {result.transactionType === 'auth' ? 'Authorised' : 'Paid'}
+                    <Badge tone={record.transactionType === 'auth' ? 'outline' : 'gold'}>
+                      {record.transactionType === 'auth' ? 'Authorised' : 'Paid'}
                     </Badge>
                   </p>
                   <p className="mt-1 truncate text-xs text-muted">
                     {formatDateTime(record.createdAt)} · {order.items.length} item{order.items.length === 1 ? '' : 's'}
-                    {card?.number ? ` · ${card.type ? `${card.type} ` : ''}${card.number.slice(-4).padStart(8, '•')}` : ''}
+                    {card?.last4 ? ` · ${card.type ? `${card.type} ` : ''}•••• ${card.last4}` : ''}
                   </p>
                 </div>
                 <span className="shrink-0 text-sm font-semibold tabular-nums text-gold">{formatPrice(totals.total)}</span>
@@ -131,6 +120,7 @@ export default function OrderHistory({ limit = null, compact = false }) {
                     <Detail label="AVS / CVV">
                       {result.avsResponse || '—'} / {result.cvvResponse || '—'}
                     </Detail>
+                    {record.placedBy && <Detail label="Placed by">{record.placedBy}</Detail>}
                     <Detail label="Email">{order.customer.email}</Detail>
                     <Detail label="Phone">{formatPhone(order.customer.phone)}</Detail>
                     <Detail label="Ship to">
@@ -180,42 +170,18 @@ export default function OrderHistory({ limit = null, compact = false }) {
         })}
       </ul>
 
-      {limit && records.length > limit && (
+      {limit && count > records.length && (
         <div className="text-right">
           <Link href="/orders" className="text-xs uppercase tracking-[0.14em] text-gold hover:text-champagne">
-            View all {records.length} orders →
+            View all {count} orders →
           </Link>
         </div>
       )}
 
       {!compact && (
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-faint">
-          <span>{records.length} order{records.length === 1 ? '' : 's'} stored locally.</span>
-          {confirmClear ? (
-            <span className="flex items-center gap-3">
-              <span>Clear this browser&apos;s history? NMI records are unaffected.</span>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => {
-                  clearOrderHistory();
-                  setConfirmClear(false);
-                  setOpenId(null);
-                }}
-              >
-                Clear
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmClear(false)}>
-                Cancel
-              </Button>
-            </span>
-          ) : (
-            <button type="button" onClick={() => setConfirmClear(true)} className="uppercase tracking-[0.14em] hover:text-red-300">
-              Clear history
-            </button>
-          )}
-        </div>
+        <p className="pt-2 text-xs text-faint">
+          {count} order{count === 1 ? '' : 's'} on record. Search NMI by the transaction ID for refunds and voids.
+        </p>
       )}
     </div>
   );

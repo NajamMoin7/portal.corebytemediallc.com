@@ -68,11 +68,11 @@ export default function OrderConfirmation({ record, onNewOrder }) {
               <CheckCircleIcon size={24} />
             </span>
             <div className="space-y-1.5">
-              <span className="eyebrow">{result.transactionType === 'auth' ? 'Authorised' : 'Payment approved'}</span>
+              <span className="eyebrow">{record.transactionType === 'auth' ? 'Authorised' : 'Payment approved'}</span>
               <h2 className="text-2xl text-cream sm:text-3xl">{formatPrice(totals.total)} charged successfully</h2>
               <p className="text-sm text-muted">
                 {formatDateTime(record.createdAt)} · {card.type ? `${card.type} ` : ''}
-                {card.number}
+                {card.last4 ? `•••• ${card.last4}` : ''}
               </p>
             </div>
           </div>

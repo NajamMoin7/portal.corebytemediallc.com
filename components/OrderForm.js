@@ -3,8 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/context/ToastContext';
-import { MAX_ITEMS, emptyItem, emptyOrder, normaliseOrder, orderTotals, validateOrder } from '@/lib/order';
-import { saveOrderRecord } from '@/lib/orders-store';
+import { MAX_ITEMS, emptyItem, emptyOrder, normaliseOrder, validateOrder } from '@/lib/order';
 import { TOKENIZATION_KEY } from '@/lib/collect';
 import { cn } from '@/lib/utils';
 import CardFields from './CardFields';
@@ -44,7 +43,8 @@ function scrollToFirstError() {
  *   2. ask Collect.js for a single-use payment token (card data stays in
  *      NMI's iframes);
  *   3. POST the order + token to /api/charge, which runs the sale with the
- *      private key and returns the gateway result.
+ *      private key, saves the approved order to MongoDB and returns the
+ *      gateway result together with the saved record.
  */
 export default function OrderForm({ gatewayConfigured, transactionType }) {
   const router = useRouter();
@@ -177,19 +177,19 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
         return;
       }
 
-      const normalised = normaliseOrder(orderRef.current);
-      const completed = {
-        id: normalised.orderId,
-        createdAt: new Date().toISOString(),
-        order: normalised,
-        totals: orderTotals(normalised),
-        result: data,
-        card,
-      };
-      saveOrderRecord(completed);
-      setRecord(completed);
+      // The server builds the record (and stores it) so the confirmation
+      // screen shows exactly what the database holds.
+      setRecord(data.record);
       setStatus('idle');
       toast({ title: 'Payment approved', description: `Transaction ${data.transactionId}`, variant: 'success' });
+      if (!data.saved) {
+        toast({
+          title: 'Order not saved to the database',
+          description: data.saveError || 'Note the transaction ID — the charge itself went through.',
+          variant: 'error',
+          duration: 12000,
+        });
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch {
       setStatus('idle');

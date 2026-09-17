@@ -2,8 +2,8 @@
 
 Internal staff portal for **portal.corebytemediallc.com**. Staff sign in, enter a customer's
 details and the print products they are ordering, take the card, and charge it through the
-NMI merchant gateway. Built with Next.js 16 (App Router), Tailwind CSS v4 and JavaScript, using
-the same brand system as the public website. It is a standalone project — nothing is shared
+NMI merchant gateway. Approved orders are saved to MongoDB. Built with Next.js 16 (App Router),
+Tailwind CSS v4 and JavaScript, using the same brand system as the public website. It is a standalone project — nothing is shared
 at runtime with corebytemediallc.com.
 
 ```bash
@@ -24,8 +24,10 @@ npm run lint
 2. The browser POSTs the order and that token to `/api/charge`.
 3. The route re-validates the order, **recomputes the total from the line items**, and
    submits a `sale` (or `auth`) to the NMI Payment API with the **private** security key.
-4. The gateway result (transaction ID, auth code, AVS/CVV) is shown to staff and saved to the
-   browser's local order history.
+4. On approval the order, totals, gateway result (transaction ID, auth code, AVS/CVV) and the
+   card's last four digits are saved to the `orders` collection in MongoDB, and the record is
+   shown to staff. A failed save never fails the request — the card has already been charged —
+   it is reported on screen instead.
 
 Refunds, voids, captures and full reporting are done in the NMI merchant portal.
 
@@ -40,6 +42,8 @@ Set these in Netlify under **Site configuration → Environment variables** (and
 | `PORTAL_PASSWORD` | server | Staff login password |
 | `PORTAL_SESSION_SECRET` | server | Signs the session cookie — `openssl rand -hex 32` |
 | `PORTAL_SESSION_HOURS` | server | Session length (default 12) |
+| `MONGODB_URI` | server | MongoDB Atlas connection string (see below) |
+| `MONGODB_DB` | server | Optional database name (default `corebyte-portal`) |
 | `NEXT_PUBLIC_NMI_TOKENIZATION_KEY` | browser | NMI **public** key for Collect.js |
 | `NMI_SECURITY_KEY` | server | NMI **private** key for the Payment API |
 | `NMI_API_URL` | server | Optional gateway URL override |
@@ -49,6 +53,29 @@ Set these in Netlify under **Site configuration → Environment variables** (and
 
 `NEXT_PUBLIC_*` values are compiled into the browser bundle at build time, so after changing
 them in Netlify trigger a new deploy. Never give the private key a `NEXT_PUBLIC_` prefix.
+
+### Setting up MongoDB
+
+The portal uses [MongoDB Atlas](https://www.mongodb.com/atlas), MongoDB's hosted service. The
+free tier (M0) is enough for this workload.
+
+1. Create an Atlas account and a project, then **Create a cluster** → choose the **Free** tier.
+2. **Database Access** → *Add new database user* → username + password with the
+   *Read and write to any database* role. Avoid special characters in the password, or
+   URL-encode them in the URI.
+3. **Network Access** → *Add IP address*. For local development add your current IP. For
+   Netlify (whose function IPs change) add `0.0.0.0/0` — the user's password is still
+   required to connect.
+4. **Database → Connect → Drivers** → copy the connection string, replace `<password>`, and
+   paste it into `MONGODB_URI`.
+
+The `corebyte-portal` database and its `orders` collection are created automatically on the
+first order; indexes (unique `orderId`, `createdAt`, `result.transactionId`,
+`order.customer.email`) are created on first use by `lib/orders-db.js`. Browse the data in
+Atlas under **Database → Browse Collections**.
+
+The dashboard's *Gateway status* panel pings the database, so a wrong URI or missing network
+access entry shows up there without placing an order.
 
 ### Getting the NMI keys
 
@@ -85,11 +112,11 @@ app/
   page.js                 redirects to /dashboard or /login
   login/                  sign-in page
   (portal)/layout.js      session guard + header/footer for every portal page
-  (portal)/dashboard/     quick actions, gateway status, recent orders
+  (portal)/dashboard/     quick actions, gateway + database status, recent orders
   (portal)/orders/new/    the order + charge form
-  (portal)/orders/        local order history
+  (portal)/orders/        order history from MongoDB
   api/auth/login|logout   session cookie set / clear
-  api/charge              validates the order and calls NMI
+  api/charge              validates the order, calls NMI, saves the approved order
 components/
   OrderForm.js            form state, submit → tokenise → charge
   CardFields.js           Collect.js inline iframes
@@ -100,7 +127,8 @@ lib/
   auth.js                 HMAC-signed session cookie (server only)
   nmi.js                  Payment API client + response codes (server only)
   order.js                shared order shape, normalisation, validation, totals
-  orders-store.js         localStorage history
+  mongodb.js              cached MongoClient connection (server only)
+  orders-db.js            orders collection: save, list, count, find (server only)
   collect.js              Collect.js loader
 data/
   site.js                 brand, contact, currency, nav, order defaults
@@ -112,8 +140,10 @@ data/
 
 - **Login** is a single set of credentials from the environment. There is no user database;
   add one (or an auth provider) if more than one person needs their own account.
-- **Order history is per browser** (`localStorage`). It is a convenience, not the system of
-  record — NMI is. Search there by the `CBM-…` order reference or the transaction ID.
+- **Order history lives in MongoDB** and is shared by everyone who uses the portal. NMI is
+  still the authority on the money: refunds, voids and captures are done there, by the
+  transaction ID stored on each order. Only the card's last four digits, type and expiry are
+  stored — never a full card number.
 - **Prices** pre-fill from `data/products.js` and can be overridden per line; the server
   accepts the entered price (it is a staff tool) but caps quantity, unit price and order total
   (`lib/order.js`).
