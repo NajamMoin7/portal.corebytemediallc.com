@@ -1,8 +1,8 @@
 # Core Byte Media LLC — Order Portal
 
-Internal staff portal for **portal.corebytemediallc.com**. Staff sign in, pick their name in the
-agent picker, enter the amount and the customer's billing and shipping details, take the card,
-and charge it through the NMI merchant gateway. Approved orders are saved to MongoDB with the
+Internal staff portal for **portal.corebytemediallc.com**. Each agent signs in with their own
+email and password, enters the amount and the customer's billing and shipping details, takes the
+card, and charges it through the NMI merchant gateway. Approved orders are saved to MongoDB with the
 agent who took them, and the dashboard shows per-agent totals for today, this month, this year
 and all time. Built with Next.js 16 (App Router),
 Tailwind CSS v4 and JavaScript, using the same brand system as the public website. It is a standalone project — nothing is shared
@@ -40,8 +40,8 @@ Set these in Netlify under **Site configuration → Environment variables** (and
 
 | Variable | Where used | Purpose |
 | --- | --- | --- |
-| `PORTAL_EMAIL` | server | Staff login email |
-| `PORTAL_PASSWORD` | server | Staff login password |
+| `PORTAL_EMAIL` | server | Email of the **first super admin**, created on first login |
+| `PORTAL_PASSWORD` | server | Password for that first super admin |
 | `PORTAL_SESSION_SECRET` | server | Signs the session cookie — `openssl rand -hex 32` |
 | `PORTAL_SESSION_HOURS` | server | Session length (default 12) |
 | `MONGODB_URI` | server | MongoDB Atlas connection string (see below) |
@@ -55,6 +55,35 @@ Set these in Netlify under **Site configuration → Environment variables** (and
 
 `NEXT_PUBLIC_*` values are compiled into the browser bundle at build time, so after changing
 them in Netlify trigger a new deploy. Never give the private key a `NEXT_PUBLIC_` prefix.
+
+## Roles and accounts
+
+There are two roles, both stored in the `users` collection:
+
+| | Super admin | Agent |
+| --- | --- | --- |
+| Take orders and charge cards | yes | yes |
+| See order history and totals | everyone's | only their own |
+| Create, edit and archive agents | yes | no |
+| Reset passwords, switch access on/off | yes | no |
+
+**The first super admin** is created automatically from `PORTAL_EMAIL` and `PORTAL_PASSWORD` the
+first time anyone signs in. That bootstrap only ever *creates*: once a super admin exists,
+changing those variables does nothing, and passwords changed in the portal are never overwritten
+by a later deploy.
+
+**Agents** are created in the portal under **Agents** (super admin only). Give the new agent the
+email and password you set — the password is stored as a salted scrypt hash and cannot be read
+back, only replaced.
+
+**Nothing is ever deleted.** "Delete" on an agent *archives* them: they can no longer sign in and
+drop out of the active lists, but their account and every order they took stay in the database,
+and they can be restored at any time. Deactivating or archiving an agent also ends any session
+they already have open, because the role and status are re-read from the database on every
+request.
+
+The portal refuses any change that would leave no active super admin, and you cannot archive or
+demote your own account.
 
 ### Setting up MongoDB
 
@@ -118,19 +147,22 @@ app/
   (portal)/layout.js      session guard + header/footer for every portal page
   (portal)/dashboard/     quick actions, gateway + database status, agent totals, recent orders
   (portal)/orders/new/    the order + charge form
-  (portal)/orders/        agent totals + full order history from MongoDB
+  (portal)/orders/        agent totals + order history (scoped by role)
+  (portal)/agents/        super admin: create, edit, activate, archive agents
+  api/agents/             agent CRUD (super admin only; DELETE archives)
   api/auth/login|logout   session cookie set / clear
   api/charge              validates the order, calls NMI, saves the approved order
 components/
   OrderForm.js            form state, submit → tokenise → charge
   CardFields.js           Collect.js inline iframes
-  AgentPicker.js          "who is taking this order" pills in the header
+  AgentsManager.js        super admin's staff table and forms
   AgentStats.js           per-agent totals table (day / month / year / all time)
   order/                  billing + shipping fields, summary and confirmation blocks
   PortalHeader.js, LoginForm.js, OrderHistory.js, PageHeader.js
   ui/                     Button, Field, Icons, Badge, Notice, Panel, Toast, spinners
 lib/
-  auth.js                 HMAC-signed session cookie (server only)
+  auth.js                 signed session cookie + the signed-in user (server only)
+  users.js                users collection: roles, scrypt passwords, archiving
   nmi.js                  Payment API client + response codes (server only)
   order.js                shared order shape, normalisation, validation
   mongodb.js              cached MongoClient connection (server only)
@@ -138,24 +170,23 @@ lib/
   collect.js              Collect.js loader
 data/
   site.js                 brand, contact, currency, nav, business timezone
-  agents.js               the staff who take orders — edit this to add or rename someone
   us-states.js
 context/
-  AgentContext.js         selected agent, remembered per browser
   ToastContext.js
 ```
 
 ## Things to know
 
-- **Login** is a single set of credentials from the environment. There is no user database;
-  add one (or an auth provider) if more than one person needs their own account.
+- **Login** is per person, from the `users` collection. Sessions are signed cookies holding only
+  the user id; the role and status are read from the database on every request, so access changes
+  take effect immediately.
 - **Order history lives in MongoDB** and is shared by everyone who uses the portal. NMI is
   still the authority on the money: refunds, voids and captures are done there, by the
   transaction ID stored on each order. Only the card's last four digits, type and expiry are
   stored — never a full card number.
-- **Agents** are the names in `data/agents.js`. The picker in the header remembers the choice
-  per browser; the form will not charge until a name is selected, and the server rejects any
-  name not in the list. Renaming an agent does not re-attribute their earlier orders.
+- **Orders are attributed to whoever is signed in.** The charge route takes the agent from the
+  session, never from the request body, so a browser cannot record an order against someone else.
+  Renaming an agent does not re-attribute their earlier orders.
 - **Amount** is entered directly (there is no product catalogue). The server caps it at
   `MAX_AMOUNT` in `lib/order.js`.
 - The site sends `X-Robots-Tag: noindex` and a disallow-all `robots.txt`.

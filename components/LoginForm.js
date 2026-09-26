@@ -50,9 +50,10 @@ export default function LoginForm({ configured }) {
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
       {!configured && (
         <Notice tone="warning" title="Login is not configured yet">
-          Set <code className="text-champagne">PORTAL_EMAIL</code>,{' '}
-          <code className="text-champagne">PORTAL_PASSWORD</code> and{' '}
-          <code className="text-champagne">PORTAL_SESSION_SECRET</code> in the environment, then reload.
+          Set <code className="text-champagne">MONGODB_URI</code> and{' '}
+          <code className="text-champagne">PORTAL_SESSION_SECRET</code> in the environment, then reload. The first
+          super admin is created from <code className="text-champagne">PORTAL_EMAIL</code> and{' '}
+          <code className="text-champagne">PORTAL_PASSWORD</code>.
         </Notice>
       )}
 
@@ -64,6 +65,8 @@ export default function LoginForm({ configured }) {
         onChange={setEmail}
         autoComplete="username"
         placeholder="you@corebytemediallc.com"
+        autoCapitalize="none"
+        spellCheck={false}
         required
         autoFocus
       />

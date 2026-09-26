@@ -1,17 +1,21 @@
 import { NextResponse } from 'next/server';
-import {
-  SESSION_COOKIE,
-  checkCredentials,
-  createSessionToken,
-  isAuthConfigured,
-  sessionCookieOptions,
-} from '@/lib/auth';
+import { SESSION_COOKIE, createSessionToken, isAuthConfigured, sessionCookieOptions } from '@/lib/auth';
+import { authenticate, ensureSuperAdmin } from '@/lib/users';
+
+/**
+ * POST /api/auth/login
+ *
+ * Signs in with the email and password of a `users` record — the super admin
+ * or an agent the super admin created. Inactive and archived accounts are
+ * refused with a message that says so, since the person on the phone needs to
+ * know to ask their admin rather than retype their password.
+ */
 
 /**
  * Best-effort brute-force throttle: 10 failed attempts per IP per 15 minutes.
  * The map lives in the function instance's memory, so on Netlify it resets
  * whenever the instance is recycled — it slows an attacker down rather than
- * stopping one, which is proportionate for a single-user tool.
+ * stopping one, which is proportionate for a small internal tool.
  */
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 10;
@@ -49,8 +53,7 @@ export async function POST(request) {
     return NextResponse.json(
       {
         ok: false,
-        message:
-          'Portal login is not configured. Set PORTAL_EMAIL, PORTAL_PASSWORD and PORTAL_SESSION_SECRET.',
+        message: 'Portal login is not configured. Set MONGODB_URI and PORTAL_SESSION_SECRET.',
       },
       { status: 503 },
     );
@@ -74,14 +77,45 @@ export async function POST(request) {
   const email = typeof body?.email === 'string' ? body.email : '';
   const password = typeof body?.password === 'string' ? body.password : '';
 
-  if (!checkCredentials(email, password)) {
+  // Creates the first super admin from PORTAL_EMAIL / PORTAL_PASSWORD when the
+  // collection has none, so a new deployment is never locked out. It is a
+  // no-op once a super admin exists.
+  try {
+    await ensureSuperAdmin();
+  } catch (error) {
+    console.error('[login] super admin bootstrap failed', error);
+  }
+
+  let outcome;
+  try {
+    outcome = await authenticate(email, password);
+  } catch (error) {
+    console.error('[login] could not reach the database', error);
+    return NextResponse.json(
+      { ok: false, message: 'Could not reach the database. Try again in a moment.' },
+      { status: 503 },
+    );
+  }
+
+  if (outcome.reason === 'disabled') {
+    recordFailure(ip);
+    return NextResponse.json(
+      { ok: false, message: 'This account is inactive. Ask your administrator to re-activate it.' },
+      { status: 403 },
+    );
+  }
+
+  if (!outcome.user) {
     recordFailure(ip);
     return NextResponse.json({ ok: false, message: 'Incorrect email or password.' }, { status: 401 });
   }
 
   failures.delete(ip);
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(SESSION_COOKIE, createSessionToken(email.trim().toLowerCase()), sessionCookieOptions());
+  const response = NextResponse.json({
+    ok: true,
+    user: { name: outcome.user.name, role: outcome.user.role },
+  });
+  response.cookies.set(SESSION_COOKIE, createSessionToken(outcome.user.id), sessionCookieOptions());
   return response;
 }

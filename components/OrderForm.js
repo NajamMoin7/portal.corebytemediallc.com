@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/context/ToastContext';
-import { useAgent } from '@/context/AgentContext';
 import { CURRENCY } from '@/data/site';
 import { emptyOrder, normaliseOrder, validateOrder } from '@/lib/order';
 import { TOKENIZATION_KEY } from '@/lib/collect';
@@ -35,8 +34,8 @@ function scrollToFirstError() {
 
 /**
  * The whole "take an order over the phone" flow on one page:
- * card + amount → billing details → shipping → charge. The agent taking the
- * order comes from the header picker and is stamped on the record.
+ * card + amount → billing details → shipping → charge. The order is recorded
+ * against the signed-in agent, which the server reads from the session.
  *
  * Submit sequence:
  *   1. validate the order locally (same rules the server applies);
@@ -46,10 +45,9 @@ function scrollToFirstError() {
  *      private key, saves the approved order to MongoDB and returns the
  *      gateway result together with the saved record.
  */
-export default function OrderForm({ gatewayConfigured, transactionType }) {
+export default function OrderForm({ gatewayConfigured, transactionType, agent }) {
   const router = useRouter();
   const { toast } = useToast();
-  const { agent } = useAgent();
 
   const [order, setOrder] = useState(emptyOrder);
   const [errors, setErrors] = useState({});
@@ -61,11 +59,9 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
   // Collect.js delivers the token asynchronously; read the order through a ref
   // so the callback sees the values as they are at that moment.
   const orderRef = useRef(order);
-  const agentRef = useRef(agent);
   useEffect(() => {
     orderRef.current = order;
-    agentRef.current = agent;
-  }, [order, agent]);
+  }, [order]);
 
   const setField = useCallback((path, value) => {
     setOrder((current) => setIn(current, path, value));
@@ -81,7 +77,7 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
     if (status !== 'idle') return;
     setGatewayError(null);
 
-    const { valid, errors: nextErrors } = validateOrder(normaliseOrder({ ...order, agent }));
+    const { valid, errors: nextErrors } = validateOrder(normaliseOrder({ ...order, agent: agent?.name }));
     setErrors(nextErrors);
     if (!valid) {
       toast({ title: 'Check the highlighted fields', variant: 'error' });
@@ -123,7 +119,7 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
       const res = await fetch('/api/charge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: { ...orderRef.current, agent: agentRef.current }, paymentToken, card }),
+        body: JSON.stringify({ order: orderRef.current, paymentToken, card }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -209,13 +205,6 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
           <Notice tone="warning" title="Gateway not configured">
             <code className="text-champagne">NMI_SECURITY_KEY</code> is not set, so orders cannot be charged. Add
             it to the environment (Netlify → Site configuration → Environment variables) and redeploy.
-          </Notice>
-        )}
-
-        {!agent && (
-          <Notice tone="warning" title="Select your name first">
-            Choose your name in the <strong>Agent</strong> picker at the top of the page so this order is recorded
-            against you.
           </Notice>
         )}
 
@@ -313,7 +302,7 @@ export default function OrderForm({ gatewayConfigured, transactionType }) {
       <div className="lg:sticky lg:top-28 lg:col-span-4 lg:self-start">
         <OrderSummary
           order={order}
-          agent={agent}
+          agent={agent?.name}
           errors={errors}
           status={status}
           canCharge={gatewayConfigured && Boolean(TOKENIZATION_KEY)}

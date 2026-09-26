@@ -3,11 +3,11 @@ import AgentStats from '@/components/AgentStats';
 import OrderHistory from '@/components/OrderHistory';
 import PageHeader from '@/components/PageHeader';
 import Panel from '@/components/ui/Panel';
-import { ArrowRightIcon, CheckCircleIcon, AlertIcon, ListIcon, PlusIcon } from '@/components/ui/Icons';
+import { ArrowRightIcon, CheckCircleIcon, AlertIcon, ListIcon, PlusIcon, UserIcon } from '@/components/ui/Icons';
 import { isGatewayConfigured, isTokenizationConfigured } from '@/lib/nmi';
 import { checkDatabaseConnection } from '@/lib/mongodb';
 import { loadAgentStats, loadOrderHistory } from '@/lib/orders-db';
-import { getSession } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 export const metadata = {
@@ -28,46 +28,66 @@ const ACTIONS = [
     href: '/orders',
     Icon: ListIcon,
     title: 'Order history',
-    description: 'Every approved order, with transaction IDs for NMI lookups.',
+    description: 'Your approved orders, with transaction IDs for NMI lookups.',
+  },
+  {
+    href: '/agents',
+    Icon: UserIcon,
+    title: 'Agents',
+    description: 'Create agent logins, reset passwords and switch access on or off.',
+    superAdminOnly: true,
   },
 ];
 
 export default async function DashboardPage() {
-  const [session, database, history, stats] = await Promise.all([
-    getSession(),
-    checkDatabaseConnection(),
-    loadOrderHistory({ limit: 5 }),
-    loadAgentStats(),
+  const user = await requireUser();
+  const admin = user.role === 'superadmin';
+
+  // Agents see only their own orders and totals; the super admin sees everyone's.
+  const scope = admin ? {} : { agentId: user.id };
+
+  const [database, history, stats] = await Promise.all([
+    admin ? checkDatabaseConnection() : Promise.resolve(null),
+    loadOrderHistory({ limit: 5, ...scope }),
+    loadAgentStats(scope),
   ]);
-  const checks = [
-    { label: 'NMI public key (Collect.js)', ok: isTokenizationConfigured(), env: 'NEXT_PUBLIC_NMI_TOKENIZATION_KEY' },
-    { label: 'NMI private key (charges)', ok: isGatewayConfigured(), env: 'NMI_SECURITY_KEY' },
-    {
-      label: 'Transaction mode',
-      ok: true,
-      value: process.env.NMI_TRANSACTION_TYPE === 'auth' ? 'Authorise only' : 'Sale (charge immediately)',
-    },
-    {
-      label: 'MongoDB (order records)',
-      ok: database.ok,
-      env: 'MONGODB_URI',
-      value: database.ok ? `Connected · ${database.database}` : database.reason,
-    },
-  ];
+
+  const checks = admin
+    ? [
+        { label: 'NMI public key (Collect.js)', ok: isTokenizationConfigured(), env: 'NEXT_PUBLIC_NMI_TOKENIZATION_KEY' },
+        { label: 'NMI private key (charges)', ok: isGatewayConfigured(), env: 'NMI_SECURITY_KEY' },
+        {
+          label: 'Transaction mode',
+          ok: true,
+          value: process.env.NMI_TRANSACTION_TYPE === 'auth' ? 'Authorise only' : 'Sale (charge immediately)',
+        },
+        {
+          label: 'MongoDB (order records)',
+          ok: database.ok,
+          env: 'MONGODB_URI',
+          value: database.ok ? `Connected · ${database.database}` : database.reason,
+        },
+      ]
+    : [];
   const allGood = checks.every((check) => check.ok);
+  const actions = ACTIONS.filter((action) => !action.superAdminOnly || admin);
 
   return (
     <div className="container-page py-10 lg:py-14">
       <PageHeader
-        eyebrow="Dashboard"
-        title={`Welcome back${session?.email ? `, ${session.email.split('@')[0]}` : ''}`}
-        description="Take orders over the phone or in person, charge the card, and keep a record of who took what."
+        eyebrow={admin ? 'Super admin' : 'Dashboard'}
+        title={`Welcome back, ${user.name}`}
+        description={
+          admin
+            ? 'Take orders, manage the agents who take them, and keep an eye on the totals.'
+            : 'Take orders over the phone or in person and charge the card. Everything you take is recorded against your account.'
+        }
         className="mb-10"
       />
 
       <div className="grid gap-6 lg:grid-cols-12">
-        <div className="grid gap-6 sm:grid-cols-2 lg:col-span-8">
-          {ACTIONS.map(({ href, Icon, title, description, primary }) => (
+        <div className={cn('grid gap-6 sm:grid-cols-2', admin ? 'lg:col-span-8' : 'lg:col-span-12')}>
+          {actions.map(({ href, Icon, title, description, primary }) => (
             <Link
               key={href}
               href={href}
@@ -96,52 +116,54 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        <Panel className="space-y-5 lg:col-span-4">
-          <div className="flex items-center justify-between">
-            <h2 className="eyebrow">Gateway status</h2>
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.12em]',
-                allGood ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400',
-              )}
-            >
-              {allGood ? 'Ready' : 'Action needed'}
-            </span>
-          </div>
-          <ul className="space-y-3 text-sm">
-            {checks.map((check) => (
-              <li key={check.label} className="flex items-start gap-3">
-                {check.ok ? (
-                  <CheckCircleIcon size={18} className="mt-0.5 shrink-0 text-emerald-400" />
-                ) : (
-                  <AlertIcon size={18} className="mt-0.5 shrink-0 text-red-400" />
+        {admin && (
+          <Panel className="space-y-5 lg:col-span-4">
+            <div className="flex items-center justify-between">
+              <h2 className="eyebrow">Gateway status</h2>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.12em]',
+                  allGood ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400',
                 )}
-                <span className="min-w-0">
-                  <span className="block text-cream">{check.label}</span>
-                  <span className="block text-xs text-muted">
-                    {check.value || (check.ok ? 'Configured' : `Missing ${check.env}`)}
+              >
+                {allGood ? 'Ready' : 'Action needed'}
+              </span>
+            </div>
+            <ul className="space-y-3 text-sm">
+              {checks.map((check) => (
+                <li key={check.label} className="flex items-start gap-3">
+                  {check.ok ? (
+                    <CheckCircleIcon size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                  ) : (
+                    <AlertIcon size={18} className="mt-0.5 shrink-0 text-red-400" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="block text-cream">{check.label}</span>
+                    <span className="block text-xs text-muted">
+                      {check.value || (check.ok ? 'Configured' : `Missing ${check.env}`)}
+                    </span>
                   </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          {!allGood && (
-            <p className="text-xs leading-relaxed text-faint">
-              Add the missing variables in Netlify under Site configuration → Environment variables, then trigger a
-              redeploy.
-            </p>
-          )}
-        </Panel>
+                </li>
+              ))}
+            </ul>
+            {!allGood && (
+              <p className="text-xs leading-relaxed text-faint">
+                Add the missing variables in Netlify under Site configuration → Environment variables, then trigger a
+                redeploy.
+              </p>
+            )}
+          </Panel>
+        )}
       </div>
 
       <section className="mt-12 space-y-5">
-        <h2 className="eyebrow">Agent totals</h2>
+        <h2 className="eyebrow">{admin ? 'Agent totals' : 'Your totals'}</h2>
         <AgentStats rows={stats.rows} error={stats.error} />
       </section>
 
       <section className="mt-12 space-y-5">
         <div className="flex items-end justify-between gap-4">
-          <h2 className="eyebrow">Recent orders</h2>
+          <h2 className="eyebrow">{admin ? 'Recent orders' : 'Your recent orders'}</h2>
           <Link href="/orders" className="text-xs uppercase tracking-[0.14em] text-muted hover:text-gold">
             View all
           </Link>

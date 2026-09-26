@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { createTransaction, isGatewayConfigured } from '@/lib/nmi';
 import { isDatabaseConfigured } from '@/lib/mongodb';
 import { sanitiseCard, saveOrderRecord } from '@/lib/orders-db';
@@ -20,17 +20,17 @@ import { CURRENCY } from '@/data/site';
  * it returned alongside (reduced to last four / type / expiry for the order
  * record — it is never sent to the gateway).
  *
- * The order is re-normalised and re-validated here (including that the
- * agent is one of `data/agents.js`), so the client cannot smuggle in bad
- * values.
+ * The order is re-normalised and re-validated here, and the agent is taken
+ * from the session rather than the request, so the browser cannot attribute
+ * an order to someone else.
  *
  * On approval the order is written to MongoDB. A failed write after a
  * successful charge is reported as `saved: false` rather than as an error,
  * because the card has already been charged and NMI holds the transaction.
  */
 export async function POST(request) {
-  const session = await getSession();
-  if (!session) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ ok: false, message: 'Your session has expired. Sign in again.' }, { status: 401 });
   }
 
@@ -53,7 +53,8 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, message: 'Missing payment token. Re-enter the card details.' }, { status: 400 });
   }
 
-  const order = normaliseOrder(body?.order);
+  // The agent is whoever is signed in — never what the browser claims.
+  const order = normaliseOrder({ ...body?.order, agent: user.name });
   const { valid, errors } = validateOrder(order);
   if (!valid) {
     return NextResponse.json(
@@ -108,7 +109,7 @@ export async function POST(request) {
     // Free-text fields that appear against the transaction in the NMI portal.
     merchant_defined_field_1: 'Core Byte Media portal',
     merchant_defined_field_2: `Agent: ${order.agent}`,
-    merchant_defined_field_3: `Placed by ${session.email}`,
+    merchant_defined_field_3: `Placed by ${user.email}`,
     merchant_defined_field_4: order.invoiceNumber,
     merchant_defined_field_5: order.description,
 
@@ -152,8 +153,9 @@ export async function POST(request) {
       record = await saveOrderRecord({
         orderId: order.orderId,
         createdAt: new Date(),
-        placedBy: session.email,
-        agent: order.agent,
+        placedBy: user.email,
+        agent: user.name,
+        agentId: user.id,
         transactionType,
         order,
         totals,
@@ -175,8 +177,9 @@ export async function POST(request) {
       id: order.orderId,
       orderId: order.orderId,
       createdAt: new Date().toISOString(),
-      placedBy: session.email,
-      agent: order.agent,
+      placedBy: user.email,
+      agent: user.name,
+      agentId: user.id,
       transactionType,
       order,
       totals,

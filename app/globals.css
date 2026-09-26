@@ -354,5 +354,11 @@
   width: 100% !important;
   height: 100% !important;
   border: 0;
-  background: transparent;
+  /* Opaque, not transparent: the document NMI serves inside the iframe has a
+     white background of its own, which showed through and made the card
+     boxes white. This must stay in step with FIELD_BG in CardFields.js. */
+  background: #171a1e;
+  /* Tells the embedded document to render its default canvas dark, so any
+     frame that paints before our customCss applies is not a white flash. */
+  color-scheme: dark;
 }

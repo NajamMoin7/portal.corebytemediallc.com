@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { BRAND, CONTACT } from '@/data/site';
-import { getSession, isAuthConfigured } from '@/lib/auth';
+import { getCurrentUser, isAuthConfigured } from '@/lib/auth';
 import LoginForm from '@/components/LoginForm';
 import Logo from '@/components/Logo';
 
@@ -9,8 +9,8 @@ export const metadata = {
 };
 
 export default async function LoginPage() {
-  const session = await getSession();
-  if (session) redirect('/dashboard');
+  const user = await getCurrentUser();
+  if (user) redirect('/dashboard');
 
   return (
     <main id="main" className="relative flex flex-1 items-center justify-center px-5 py-16">
@@ -25,7 +25,9 @@ export default async function LoginPage() {
           <div className="space-y-2">
             <span className="eyebrow">{BRAND.portalName}</span>
             <h1 className="text-3xl text-cream">Sign in to continue</h1>
-            <p className="text-sm text-muted">Staff access only. Sessions expire automatically.</p>
+            <p className="text-sm text-muted">
+            Sign in with the email and password your administrator gave you.
+          </p>
           </div>
         </div>
 
@@ -34,7 +36,7 @@ export default async function LoginPage() {
         </div>
 
         <p className="mt-8 text-center text-xs text-faint">
-          Trouble signing in? Contact{' '}
+          Forgotten your password, or account inactive? Your super admin can reset it. Contact{' '}
           <a href={`mailto:${CONTACT.email}`} className="text-muted hover:text-gold">
             {CONTACT.email}
           </a>

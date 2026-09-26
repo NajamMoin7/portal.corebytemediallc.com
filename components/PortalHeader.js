@@ -7,7 +7,6 @@ import { NAV_LINKS } from '@/data/site';
 import { useToast } from '@/context/ToastContext';
 import { useScrolledPast } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
-import AgentPicker from './AgentPicker';
 import Logo from './Logo';
 import { CloseIcon, LogoutIcon, MenuIcon, UserIcon } from './ui/Icons';
 
@@ -15,14 +14,19 @@ import { CloseIcon, LogoutIcon, MenuIcon, UserIcon } from './ui/Icons';
  * Portal chrome: the storefront header treatment (mark, gold underline nav,
  * blur on scroll) with the shop actions swapped for the signed-in user and a
  * logout button.
+ *
+ * The nav is filtered by role, so an agent never sees the Agents link. That
+ * is presentation only — the page itself redirects non-admins and the API
+ * refuses them.
  */
-export default function PortalHeader({ email }) {
+export default function PortalHeader({ user }) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const scrolled = useScrolledPast(12);
+  const links = NAV_LINKS.filter((link) => !link.superAdminOnly || user?.role === 'superadmin');
 
   // Close the mobile menu on navigation, adjusted during render so the panel
   // is gone in the same pass that paints the new page.
@@ -76,7 +80,7 @@ export default function PortalHeader({ email }) {
 
           <nav aria-label="Portal navigation" className="hidden lg:block">
             <ul className="flex items-center gap-1">
-              {NAV_LINKS.map((link) => {
+              {links.map((link) => {
                 const active = isActive(link.href);
                 return (
                   <li key={link.href}>
@@ -104,11 +108,15 @@ export default function PortalHeader({ email }) {
           </nav>
 
           <div className="flex items-center gap-1">
-            <AgentPicker className="mr-2 hidden lg:flex" />
-
-            <span className="hidden items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-muted xl:inline-flex">
+            <span
+              title={user?.email}
+              className="mr-2 hidden items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs text-muted md:inline-flex"
+            >
               <UserIcon size={14} className="text-gold/70" />
-              <span className="max-w-[14rem] truncate">{email}</span>
+              <span className="max-w-[12rem] truncate text-cream">{user?.name}</span>
+              {user?.role === 'superadmin' && (
+                <span className="text-[0.6rem] uppercase tracking-[0.14em] text-gold">Admin</span>
+              )}
             </span>
 
             <button
@@ -163,11 +171,8 @@ export default function PortalHeader({ email }) {
             menuOpen ? 'translate-y-0 opacity-100' : '-translate-y-3 opacity-0',
           )}
         >
-          <div className="container-page border-b border-line/60 py-4">
-            <AgentPicker stacked />
-          </div>
           <ul className="container-page flex flex-col py-2">
-            {NAV_LINKS.map((link) => {
+            {links.map((link) => {
               const active = isActive(link.href);
               return (
                 <li key={link.href} className="border-b border-line/60 last:border-0">
@@ -187,7 +192,10 @@ export default function PortalHeader({ email }) {
             })}
           </ul>
           <div className="container-page flex items-center justify-between gap-3 border-t border-line/60 py-4 text-xs text-muted">
-            <span className="truncate">{email}</span>
+            <span className="min-w-0 truncate">
+              <span className="text-cream">{user?.name}</span>
+              <span className="block truncate">{user?.email}</span>
+            </span>
             <button type="button" onClick={signOut} className="uppercase tracking-[0.14em] text-gold">
               Sign out
             </button>

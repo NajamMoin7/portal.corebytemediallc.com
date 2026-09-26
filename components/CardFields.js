@@ -14,12 +14,28 @@ const FIELDS = [
 ];
 
 /**
- * Colour tokens from globals.css, repeated here because Collect.js renders
- * the inputs inside its own iframes where our stylesheet cannot reach.
+ * The inputs live inside Collect.js's own iframes, where globals.css cannot
+ * reach: every colour has to be passed in through `customCss`.
+ *
+ * `FIELD_BG` is the flat equivalent of the `bg-charcoal/60`-over-graphite
+ * that `ui/Field` renders, so the card boxes match the inputs beside them.
+ * It must be an opaque colour — `transparent` would let the iframe's own
+ * document show through, which is white, and that is what turned these
+ * fields into white boxes.
  */
+const FIELD_BG = '#171a1e';
+const TEXT = '#f4f2ec';
+
 const IFRAME_INPUT_CSS = {
-  color: '#f4f2ec',
-  'background-color': 'transparent',
+  color: TEXT,
+  'background-color': FIELD_BG,
+  // Painted over the iframe's white document, so it must cover the whole box.
+  height: '46px',
+  'line-height': '46px',
+  width: '100%',
+  'box-sizing': 'border-box',
+  padding: '0 16px',
+  margin: '0',
   border: 'none',
   'border-radius': '0',
   'box-shadow': 'none',
@@ -27,12 +43,18 @@ const IFRAME_INPUT_CSS = {
   'font-family': 'Inter, ui-sans-serif, system-ui, sans-serif',
   'font-size': '14px',
   'font-weight': '400',
-  height: '46px',
-  'line-height': '46px',
-  padding: '0 16px',
-  margin: '0',
-  width: '100%',
+  // Chrome paints autofilled text with its own colour unless this is set.
+  '-webkit-text-fill-color': TEXT,
 };
+
+/** Every state keeps the dark background; only the text colour changes. */
+const stateCss = (color) => ({
+  'background-color': FIELD_BG,
+  color,
+  '-webkit-text-fill-color': color,
+  border: 'none',
+  outline: 'none',
+});
 
 /**
  * PCI-scoped card entry.
@@ -85,10 +107,10 @@ export default function CardFields({ ref, onToken, onTimeout, disabled = false }
           styleSniffer: false,
           googleFont: 'Inter:400',
           customCss: IFRAME_INPUT_CSS,
-          placeholderCss: { color: '#6d6960' },
-          focusCss: { outline: 'none', border: 'none' },
-          invalidCss: { color: '#f87171' },
-          validCss: { color: '#f4f2ec' },
+          placeholderCss: { color: '#6d6960', '-webkit-text-fill-color': '#6d6960' },
+          focusCss: stateCss(TEXT),
+          validCss: stateCss(TEXT),
+          invalidCss: stateCss('#f87171'),
           timeoutDuration: 15000,
           fields: Object.fromEntries(
             FIELDS.map((field) => [
@@ -154,8 +176,10 @@ export default function CardFields({ ref, onToken, onTimeout, disabled = false }
                 {!ready && <Skeleton className="absolute inset-0 rounded-lg" />}
                 <div
                   id={field.id}
+                  // Opaque background, matching FIELD_BG: any gap around the
+                  // iframe must read as part of the dark input, not white.
                   className={cn(
-                    'collect-field h-12 w-full overflow-hidden rounded-lg border bg-charcoal/60 transition-colors',
+                    'collect-field h-12 w-full overflow-hidden rounded-lg border bg-[#171a1e] transition-colors',
                     invalid ? 'border-red-500/60' : valid ? 'border-gold/45' : 'border-line',
                     !ready && 'opacity-0',
                   )}

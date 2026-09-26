@@ -1,21 +1,19 @@
-import { redirect } from 'next/navigation';
 import { BRAND, SITE_URL } from '@/data/site';
-import { getSession } from '@/lib/auth';
-import { AgentProvider } from '@/context/AgentContext';
+import { requireUser } from '@/lib/auth';
 import PortalHeader from '@/components/PortalHeader';
 
 /**
  * Everything under this group requires a session. The check runs on the
- * server for every full page load; the API routes verify the cookie again
- * independently, so a stale client cannot charge anything.
+ * server for every full page load and reads the user from the database, so an
+ * account that has been deactivated or archived loses access at once. The API
+ * routes verify independently, so a stale client cannot charge anything.
  */
 export default async function PortalLayout({ children }) {
-  const session = await getSession();
-  if (!session) redirect('/login');
+  const user = await requireUser();
 
   return (
-    <AgentProvider>
-      <PortalHeader email={session.email} />
+    <>
+      <PortalHeader user={user} />
       <main id="main" className="flex flex-1 flex-col">
         {children}
       </main>
@@ -27,6 +25,6 @@ export default async function PortalLayout({ children }) {
           </a>
         </div>
       </footer>
-    </AgentProvider>
+    </>
   );
 }
