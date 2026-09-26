@@ -12,15 +12,18 @@ export const metadata = {
 // Always read fresh from the database — never serve a cached copy of the list.
 export const dynamic = 'force-dynamic';
 
-export default async function OrdersPage() {
+const PAGE_SIZE = 20;
+
+export default async function OrdersPage({ searchParams }) {
   const user = await requireUser();
   const admin = user.role === 'superadmin';
 
   // Agents see only what they took; the super admin sees every order.
   const scope = admin ? {} : { agent: { id: user.id, name: user.name } };
+  const { page } = await searchParams;
 
-  const [{ records, total, error }, stats] = await Promise.all([
-    loadOrderHistory({ limit: 200, ...scope }),
+  const [history, stats] = await Promise.all([
+    loadOrderHistory({ limit: PAGE_SIZE, page: Number(page) || 1, ...scope }),
     loadAgentStats(scope),
   ]);
 
@@ -47,7 +50,15 @@ export default async function OrdersPage() {
       </section>
 
       <h2 className="eyebrow mb-5">{admin ? 'All orders' : 'Your orders'}</h2>
-      <OrderHistory records={records} total={total} error={error} />
+      <OrderHistory
+        records={history.records}
+        total={history.total}
+        error={history.error}
+        page={history.page}
+        pageCount={history.pageCount}
+        pageSize={history.pageSize}
+        basePath="/orders"
+      />
     </div>
   );
 }

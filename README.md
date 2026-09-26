@@ -65,6 +65,7 @@ There are two roles, both stored in the `users` collection:
 | Take orders and charge cards | yes | yes |
 | See order history and totals | everyone's | only their own |
 | Create, edit and archive agents | yes | no |
+| Download month / year reports | yes | no |
 | Reset passwords, switch access on/off | yes | no |
 
 **The first super admin** is created automatically from `PORTAL_EMAIL` and `PORTAL_PASSWORD` the
@@ -84,6 +85,25 @@ request.
 
 The portal refuses any change that would leave no active super admin, and you cannot archive or
 demote your own account.
+
+**The two roles get different navigation.** A super admin gets a left sidebar (Dashboard, New
+Order, Order History, Agents, Reports); an agent gets the simpler top header, since they only
+have the order pages. Both collapse to a drawer on a phone.
+
+## Reports
+
+**Reports** (super admin only) totals a calendar month or a whole year, broken down by agent,
+with the orders behind it. The picker only offers periods that actually have orders.
+
+Two CSV downloads per period:
+
+- **Orders** — one row per order: reference, date, agent, amount, invoice, customer and
+  contact details, addresses, transaction id, auth code, card last four, AVS and CVV.
+- **Agent summary** — one row per agent with their order count and total, plus a total row.
+
+Both are UTF-8 with a BOM so Excel opens them correctly, and any value starting with `=`, `+`,
+`-` or `@` is prefixed with a quote so spreadsheets never execute customer data as a formula.
+A single export is capped at 5,000 orders; the page says so when a period exceeds it.
 
 ### Setting up MongoDB
 
@@ -147,15 +167,19 @@ app/
   (portal)/layout.js      session guard + header/footer for every portal page
   (portal)/dashboard/     quick actions, gateway + database status, agent totals, recent orders
   (portal)/orders/new/    the order + charge form
-  (portal)/orders/        agent totals + order history (scoped by role)
+  (portal)/orders/        agent totals + paginated order history (scoped by role)
   (portal)/agents/        super admin: create, edit, activate, archive agents
+  (portal)/reports/       super admin: month / year totals and CSV downloads
   api/agents/             agent CRUD (super admin only; DELETE archives)
+  api/reports/export      CSV download (super admin only)
   api/auth/login|logout   session cookie set / clear
   api/charge              validates the order, calls NMI, saves the approved order
 components/
   OrderForm.js            form state, submit → tokenise → charge
   CardFields.js           Collect.js inline iframes
   AgentsManager.js        super admin's staff table and forms
+  PortalSidebar.js        super admin's left sidebar shell
+  ReportPicker.js         report period picker and CSV download links
   AgentStats.js           per-agent totals table (day / month / year / all time)
   order/                  billing + shipping fields, summary and confirmation blocks
   PortalHeader.js, LoginForm.js, OrderHistory.js, PageHeader.js
@@ -163,6 +187,7 @@ components/
 lib/
   auth.js                 signed session cookie + the signed-in user (server only)
   users.js                users collection: roles, scrypt passwords, archiving
+  reports.js              month / year report building and CSV output
   nmi.js                  Payment API client + response codes (server only)
   order.js                shared order shape, normalisation, validation
   mongodb.js              cached MongoClient connection (server only)
@@ -180,6 +205,9 @@ context/
 - **Login** is per person, from the `users` collection. Sessions are signed cookies holding only
   the user id; the role and status are read from the database on every request, so access changes
   take effect immediately.
+- **Order history is paginated** at 20 per page, server-side: the controls are plain links to
+  `?page=N`, so a page can be bookmarked and works before the JavaScript loads. An out-of-range
+  page clamps to the last one rather than erroring.
 - **Order history lives in MongoDB** and is shared by everyone who uses the portal. NMI is
   still the authority on the money: refunds, voids and captures are done there, by the
   transaction ID stored on each order. Only the card's last four digits, type and expiry are

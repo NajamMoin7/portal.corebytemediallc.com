@@ -55,4 +55,5 @@ export const NAV_LINKS = [
   { href: '/orders/new', label: 'New Order' },
   { href: '/orders', label: 'Order History' },
   { href: '/agents', label: 'Agents', superAdminOnly: true },
+  { href: '/reports', label: 'Reports', superAdminOnly: true },
 ];

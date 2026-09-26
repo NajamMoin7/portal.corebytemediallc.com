@@ -8,7 +8,7 @@ import Badge from './ui/Badge';
 import Button from './ui/Button';
 import Notice from './ui/Notice';
 import Panel from './ui/Panel';
-import { ChevronDownIcon, CopyIcon, ReceiptIcon } from './ui/Icons';
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, ReceiptIcon } from './ui/Icons';
 
 /**
  * Orders from the database, newest first.
@@ -18,8 +18,22 @@ import { ChevronDownIcon, CopyIcon, ReceiptIcon } from './ui/Icons';
  * copying IDs. `total` is the count in the database, used for the "view all"
  * link when `limit` trims the list. `error` is shown in place of the list
  * when the database is unavailable.
+ *
+ * Paging is server-side: pass `page` and `pageCount` and the controls render
+ * as plain links to `?page=N`, so a page can be bookmarked, opened in a new
+ * tab and works before the JavaScript loads.
  */
-export default function OrderHistory({ records = [], total = null, limit = null, compact = false, error = null }) {
+export default function OrderHistory({
+  records = [],
+  total = null,
+  limit = null,
+  compact = false,
+  error = null,
+  page = 1,
+  pageCount = 1,
+  pageSize = null,
+  basePath = '/orders',
+}) {
   const { toast } = useToast();
   const [openId, setOpenId] = useState(null);
 
@@ -160,11 +174,75 @@ export default function OrderHistory({ records = [], total = null, limit = null,
       )}
 
       {!compact && (
-        <p className="pt-2 text-xs text-faint">
-          {count} order{count === 1 ? '' : 's'} on record. Search NMI by the transaction ID for refunds and voids.
-        </p>
+        <div className="flex flex-col gap-4 border-t border-line/60 pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-faint">
+            {pageSize && count > 0
+              ? `Showing ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + records.length} of ${count}`
+              : `${count} order${count === 1 ? '' : 's'} on record`}
+            . Search NMI by the transaction ID for refunds and voids.
+          </p>
+          {pageCount > 1 && <Pagination page={page} pageCount={pageCount} basePath={basePath} />}
+        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Page links: first, a window of pages around the current one, and last, so
+ * the control stays a fixed width however many pages there are.
+ */
+function Pagination({ page, pageCount, basePath }) {
+  const href = (n) => (n === 1 ? basePath : `${basePath}?page=${n}`);
+
+  const window = [];
+  for (let n = Math.max(1, page - 1); n <= Math.min(pageCount, page + 1); n += 1) window.push(n);
+  if (!window.includes(1)) window.unshift(1);
+  if (!window.includes(pageCount)) window.push(pageCount);
+
+  return (
+    <nav aria-label="Order history pages" className="flex items-center gap-1">
+      <PageLink href={href(page - 1)} disabled={page === 1} label="Previous page">
+        <ChevronLeftIcon size={14} />
+      </PageLink>
+
+      {window.map((n, index) => (
+        <span key={n} className="flex items-center gap-1">
+          {index > 0 && window[index - 1] !== n - 1 && <span className="px-1 text-xs text-faint">…</span>}
+          <PageLink href={href(n)} current={n === page} label={`Page ${n}`}>
+            {n}
+          </PageLink>
+        </span>
+      ))}
+
+      <PageLink href={href(page + 1)} disabled={page === pageCount} label="Next page">
+        <ChevronRightIcon size={14} />
+      </PageLink>
+    </nav>
+  );
+}
+
+function PageLink({ href, children, current = false, disabled = false, label }) {
+  const classes = cn(
+    'flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-xs tabular-nums transition-colors',
+    current
+      ? 'border-gold/55 bg-gold/15 text-gold'
+      : disabled
+        ? 'cursor-not-allowed border-line/60 text-faint/50'
+        : 'border-line text-muted hover:border-gold/40 hover:text-gold',
+  );
+
+  if (disabled) {
+    return (
+      <span aria-disabled="true" aria-label={label} className={classes}>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link href={href} aria-label={label} aria-current={current ? 'page' : undefined} className={classes} scroll>
+      {children}
+    </Link>
   );
 }
 
