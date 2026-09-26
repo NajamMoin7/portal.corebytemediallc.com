@@ -158,7 +158,7 @@ export default async function DashboardPage() {
 
       <section className="mt-12 space-y-5">
         <h2 className="eyebrow">{admin ? 'Agent totals' : 'Your totals'}</h2>
-        <AgentStats rows={stats.rows} error={stats.error} />
+        <AgentStats rows={stats.rows} periods={stats.periods} error={stats.error} />
       </section>
 
       <section className="mt-12 space-y-5">

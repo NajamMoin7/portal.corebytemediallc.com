@@ -180,7 +180,8 @@ components/
   AgentsManager.js        super admin's staff table and forms
   PortalSidebar.js        super admin's left sidebar shell
   ReportPicker.js         report period picker and CSV download links
-  AgentStats.js           per-agent totals table (day / month / year / all time)
+  AgentStats.js           per-agent totals: today, last month, this month, year
+  ui/NavSpinner.js        spinner on the tab being navigated to
   order/                  billing + shipping fields, summary and confirmation blocks
   PortalHeader.js, LoginForm.js, OrderHistory.js, PageHeader.js
   ui/                     Button, Field, Icons, Badge, Notice, Panel, Toast, spinners
@@ -205,6 +206,13 @@ context/
 - **Login** is per person, from the `users` collection. Sessions are signed cookies holding only
   the user id; the role and status are read from the database on every request, so access changes
   take effect immediately.
+- **The totals table compares months.** The columns are Today, Previous Month, This Month and
+  Year, with the two months side by side and the change between them under the current figure.
+  The headings name the months (`Previous Month (Aug)`) and roll over with the calendar, worked
+  out in `TIMEZONE`, so a sale at 8:30pm on 31 August counts in August, not September.
+- **Every tab shows it is loading**: the clicked link gets an inline spinner (`useLinkStatus`)
+  and the content area gets a shape-matched skeleton from that route's `loading.js`. Portal
+  pages are all dynamic, so there is always a short wait to cover.
 - **Order history is paginated** at 20 per page, server-side: the controls are plain links to
   `?page=N`, so a page can be bookmarked and works before the JavaScript loads. An out-of-range
   page clamps to the last one rather than erroring.

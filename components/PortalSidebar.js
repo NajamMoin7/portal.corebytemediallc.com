@@ -7,6 +7,7 @@ import { useToast } from '@/context/ToastContext';
 import { BRAND } from '@/data/site';
 import { cn } from '@/lib/utils';
 import Logo from './Logo';
+import NavSpinner from './ui/NavSpinner';
 import {
   CloseIcon,
   GridIcon,
@@ -106,7 +107,8 @@ export default function PortalSidebar({ user, children }) {
                       )}
                     />
                     <link.Icon size={17} className={active ? 'text-gold' : 'text-muted group-hover:text-cream'} />
-                    {link.label}
+                    <span className="flex-1">{link.label}</span>
+                    <NavSpinner />
                   </Link>
                 </li>
               );

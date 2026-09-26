@@ -46,7 +46,7 @@ export default async function OrdersPage({ searchParams }) {
 
       <section className="mb-10 space-y-5">
         <h2 className="eyebrow">{admin ? 'Agent totals' : 'Your totals'}</h2>
-        <AgentStats rows={stats.rows} error={stats.error} />
+        <AgentStats rows={stats.rows} periods={stats.periods} error={stats.error} />
       </section>
 
       <h2 className="eyebrow mb-5">{admin ? 'All orders' : 'Your orders'}</h2>

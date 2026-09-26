@@ -8,6 +8,7 @@ import { useToast } from '@/context/ToastContext';
 import { useScrolledPast } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import Logo from './Logo';
+import NavSpinner from './ui/NavSpinner';
 import { CloseIcon, LogoutIcon, MenuIcon, UserIcon } from './ui/Icons';
 
 /**
@@ -88,11 +89,12 @@ export default function PortalHeader({ user }) {
                       href={link.href}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'group relative block px-4 py-2 text-[0.72rem] font-medium uppercase tracking-[0.16em] transition-colors duration-300',
+                        'group relative flex items-center gap-2 px-4 py-2 text-[0.72rem] font-medium uppercase tracking-[0.16em] transition-colors duration-300',
                         active ? 'text-gold' : 'text-cream/75 hover:text-cream',
                       )}
                     >
                       {link.label}
+                      <NavSpinner size={12} />
                       <span
                         aria-hidden="true"
                         className={cn(
@@ -185,7 +187,10 @@ export default function PortalHeader({ user }) {
                     )}
                   >
                     {link.label}
-                    {active && <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden="true" />}
+                    <span className="flex items-center gap-2">
+                      <NavSpinner size={12} />
+                      {active && <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden="true" />}
+                    </span>
                   </Link>
                 </li>
               );
