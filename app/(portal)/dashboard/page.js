@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   const admin = user.role === 'superadmin';
 
   // Agents see only their own orders and totals; the super admin sees everyone's.
-  const scope = admin ? {} : { agentId: user.id };
+  const scope = admin ? {} : { agent: { id: user.id, name: user.name } };
 
   const [database, history, stats] = await Promise.all([
     admin ? checkDatabaseConnection() : Promise.resolve(null),

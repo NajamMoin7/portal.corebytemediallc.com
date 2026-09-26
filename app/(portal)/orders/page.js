@@ -17,7 +17,7 @@ export default async function OrdersPage() {
   const admin = user.role === 'superadmin';
 
   // Agents see only what they took; the super admin sees every order.
-  const scope = admin ? {} : { agentId: user.id };
+  const scope = admin ? {} : { agent: { id: user.id, name: user.name } };
 
   const [{ records, total, error }, stats] = await Promise.all([
     loadOrderHistory({ limit: 200, ...scope }),
