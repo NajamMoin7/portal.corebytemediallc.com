@@ -183,12 +183,14 @@ components/
   AgentStats.js           per-agent totals: today, last month, this month, year
   ui/NavSpinner.js        spinner on the tab being navigated to
   order/                  billing + shipping fields, summary and confirmation blocks
+  order/SmartPaste.js     magic clipboard: review panel for a pasted contact block
   PortalHeader.js, LoginForm.js, OrderHistory.js, PageHeader.js
   ui/                     Button, Field, Icons, Badge, Notice, Panel, Toast, spinners
 lib/
   auth.js                 signed session cookie + the signed-in user (server only)
   users.js                users collection: roles, scrypt passwords, archiving
   reports.js              month / year report building and CSV output
+  smart-paste.js          parses pasted customer details into form fields
   nmi.js                  Payment API client + response codes (server only)
   order.js                shared order shape, normalisation, validation
   mongodb.js              cached MongoClient connection (server only)
@@ -206,6 +208,12 @@ context/
 - **Login** is per person, from the `users` collection. Sessions are signed cookies holding only
   the user id; the role and status are read from the database on every request, so access changes
   take effect immediately.
+- **Magic clipboard.** An agent can paste a customer's details — an email, a chat message, an
+  address block or a spreadsheet row — and the form fills itself. Pasting a multi-line block
+  anywhere on the form is caught and sent to a review panel instead of landing in one box; the
+  "Paste details" button and "Read my clipboard" do the same thing on demand. The parse is
+  always reviewed before it is applied: each detected value is listed with a tick, and "Undo
+  autofill" restores the previous values. Ordinary single-value pastes are untouched.
 - **The totals table compares months.** The columns are Today, Previous Month, This Month and
   Year, with the two months side by side and the change between them under the current figure.
   The headings name the months (`Previous Month (Aug)`) and roll over with the calendar, worked

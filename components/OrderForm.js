@@ -5,12 +5,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { CURRENCY } from '@/data/site';
 import { emptyOrder, normaliseOrder, validateOrder } from '@/lib/order';
+import { looksLikeContactBlock } from '@/lib/smart-paste';
 import { TOKENIZATION_KEY } from '@/lib/collect';
 import { cn } from '@/lib/utils';
 import CardFields from './CardFields';
 import { BillingFields, ShippingFields } from './order/AddressFields';
+import SmartPaste from './order/SmartPaste';
 import OrderConfirmation from './order/OrderConfirmation';
 import OrderSummary from './order/OrderSummary';
+import Button from './ui/Button';
 import Field, { Fieldset } from './ui/Field';
 import Notice from './ui/Notice';
 import Panel from './ui/Panel';
@@ -54,6 +57,11 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
   const [status, setStatus] = useState('idle');
   const [gatewayError, setGatewayError] = useState(null);
   const [record, setRecord] = useState(null);
+  // Magic clipboard: the order as it was before the last autofill, so a wrong
+  // guess is one click away from being undone.
+  const [undoSnapshot, setUndoSnapshot] = useState(null);
+  // A paste caught anywhere on the form, handed to the panel to review.
+  const [caughtPaste, setCaughtPaste] = useState(null);
 
   const cardRef = useRef(null);
   // Collect.js delivers the token asynchronously; read the order through a ref
@@ -63,6 +71,8 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
     orderRef.current = order;
   }, [order]);
 
+  const busy = status !== 'idle';
+
   const setField = useCallback((path, value) => {
     setOrder((current) => setIn(current, path, value));
     setErrors((current) => {
@@ -71,6 +81,57 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
       return rest;
     });
   }, []);
+
+  /**
+   * Applies a reviewed paste. The patch is a map of dotted paths, so the same
+   * setIn used by every input does the writing — no special cases.
+   */
+  function applyPaste(patch, count) {
+    setUndoSnapshot(order);
+    setOrder((current) =>
+      Object.entries(patch).reduce((next, [path, value]) => setIn(next, path, value), current),
+    );
+    // Anything just filled in should lose its old error.
+    setErrors((current) => {
+      const next = { ...current };
+      for (const path of Object.keys(patch)) delete next[path];
+      return next;
+    });
+    setCaughtPaste(null);
+    toast({
+      title: `Filled ${count} ${count === 1 ? 'field' : 'fields'}`,
+      description: 'Check them over before charging.',
+      variant: 'success',
+    });
+  }
+
+  function undoPaste() {
+    if (!undoSnapshot) return;
+    setOrder(undoSnapshot);
+    setUndoSnapshot(null);
+    toast({ title: 'Autofill undone', variant: 'success', duration: 2000 });
+  }
+
+  /**
+   * Catches a paste of a whole contact block anywhere on the form.
+   *
+   * A multi-line blob dropped into a single box is never what the agent
+   * wants, so that paste is held back and sent to the review panel instead.
+   * Ordinary pastes — one value into one field — are untouched.
+   */
+  function handlePaste(event) {
+    if (busy || caughtPaste) return;
+    const pasted = event.clipboardData?.getData('text') ?? '';
+    if (!looksLikeContactBlock(pasted)) return;
+
+    event.preventDefault();
+    setCaughtPaste(pasted);
+    toast({
+      title: 'Customer details detected',
+      description: 'Check what was picked up, then fill the form.',
+      variant: 'success',
+    });
+  }
 
   function handleSubmit(event) {
     event.preventDefault();
@@ -178,6 +239,8 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
   function startNewOrder() {
     setOrder(emptyOrder());
     setErrors({});
+    setUndoSnapshot(null);
+    setCaughtPaste(null);
     setGatewayError(null);
     setRecord(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -186,8 +249,6 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
   if (record) {
     return <OrderConfirmation record={record} onNewOrder={startNewOrder} />;
   }
-
-  const busy = status !== 'idle';
 
   return (
     <form
@@ -198,6 +259,7 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
       onKeyDown={(event) => {
         if (event.key === 'Enter' && event.target.tagName === 'INPUT') event.preventDefault();
       }}
+      onPaste={handlePaste}
       className="grid gap-8 lg:grid-cols-12 lg:items-start"
     >
       <div className={cn('space-y-8 lg:col-span-8', busy && 'pointer-events-none opacity-80')}>
@@ -209,7 +271,27 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
         )}
 
         <Panel>
-          <Fieldset legend="Billing Information" step="01" description="The card, the amount, and the cardholder's details for the AVS check.">
+          <Fieldset
+            legend="Billing Information"
+            step="01"
+            description="The card, the amount, and the cardholder's details for the AVS check."
+            action={
+              undoSnapshot ? (
+                <Button type="button" variant="ghost" size="sm" onClick={undoPaste}>
+                  Undo autofill
+                </Button>
+              ) : null
+            }
+          >
+            <SmartPaste
+              scope="customer"
+              onApply={applyPaste}
+              disabled={busy}
+              autoOpen={caughtPaste !== null}
+              initialText={caughtPaste ?? ''}
+              onClose={() => setCaughtPaste(null)}
+            />
+
             <CardFields ref={cardRef} onToken={handleToken} onTimeout={handleTimeout} disabled={busy} />
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -288,7 +370,10 @@ export default function OrderForm({ gatewayConfigured, transactionType, agent })
                 The order ships to the billing address above.
               </p>
             ) : (
-              <ShippingFields values={order.shipping} errors={errors} onChange={setField} disabled={busy} />
+              <>
+                <SmartPaste scope="shipping" onApply={applyPaste} disabled={busy} />
+                <ShippingFields values={order.shipping} errors={errors} onChange={setField} disabled={busy} />
+              </>
             )}
           </Fieldset>
         </Panel>
