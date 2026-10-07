@@ -50,6 +50,16 @@ export const COUNTRY = { code: 'US', name: 'United States' };
  */
 export const TIMEZONE = 'America/New_York';
 
+/**
+ * What a chargeback costs the agent who took the order.
+ *
+ * The card networks bill the merchant a fixed fee whenever a customer
+ * disputes a charge, so the same flat amount is recorded against the agent.
+ * Changing this only affects chargebacks marked afterwards — penalties
+ * already recorded keep the amount that applied at the time.
+ */
+export const CHARGEBACK_PENALTY = 35;
+
 export const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/orders/new', label: 'New Order' },

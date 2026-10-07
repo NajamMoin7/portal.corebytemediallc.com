@@ -3,14 +3,15 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useToast } from '@/context/ToastContext';
-import { cn, formatDateTime } from '@/lib/utils';
+import Link from 'next/link';
+import { cn, formatDateTime, formatPrice } from '@/lib/utils';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
 import Field from './ui/Field';
 import Notice from './ui/Notice';
 import Panel from './ui/Panel';
 import { Spinner } from './ui/LoadingSpinner';
-import { CheckCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UserIcon } from './ui/Icons';
+import { AlertIcon, CheckCircleIcon, PlusIcon, RefreshIcon, TrashIcon, UserIcon } from './ui/Icons';
 
 const ROLE_OPTIONS = [
   { value: 'agent', label: 'Agent' },
@@ -31,7 +32,7 @@ const emptyForm = () => ({ name: '', email: '', password: '', role: 'agent', sta
  * the active list, but nothing is removed from the database and the orders
  * that person took stay in the history and the totals.
  */
-export default function AgentsManager({ users, currentUserId }) {
+export default function AgentsManager({ users, currentUserId, chargebacks = {} }) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -270,6 +271,14 @@ export default function AgentsManager({ users, currentUserId }) {
                     {user.email}
                     {user.lastLoginAt ? ` · last signed in ${formatDateTime(user.lastLoginAt)}` : ' · never signed in'}
                   </p>
+                  {chargebacks[user.name]?.count > 0 && (
+                    <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-red-300">
+                      <AlertIcon size={12} />
+                      {chargebacks[user.name].count}{' '}
+                      {chargebacks[user.name].count === 1 ? 'chargeback' : 'chargebacks'} ·{' '}
+                      {formatPrice(chargebacks[user.name].penalty)} in penalties
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -291,6 +300,12 @@ export default function AgentsManager({ users, currentUserId }) {
                         {busy ? <Spinner size={14} /> : <CheckCircleIcon size={14} />}
                         {user.status === 'active' ? 'Deactivate' : 'Activate'}
                       </Button>
+                      <Link
+                        href={`/agents/${user.id}`}
+                        className="inline-flex h-9 items-center rounded-full px-4 text-xs font-medium uppercase tracking-[0.14em] text-cream/80 transition-colors hover:bg-white/5 hover:text-gold"
+                      >
+                        Profile
+                      </Link>
                       <Button type="button" variant="ghost" size="sm" onClick={() => (editing ? setEditingId(null) : startEdit(user))}>
                         {editing ? 'Close' : 'Edit'}
                       </Button>

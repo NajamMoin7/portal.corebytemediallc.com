@@ -66,6 +66,7 @@ There are two roles, both stored in the `users` collection:
 | See order history and totals | everyone's | only their own |
 | Create, edit and archive agents | yes | no |
 | Download month / year reports | yes | no |
+| Record and clear chargebacks | yes | no |
 | Reset passwords, switch access on/off | yes | no |
 
 **The first super admin** is created automatically from `PORTAL_EMAIL` and `PORTAL_PASSWORD` the
@@ -89,6 +90,26 @@ demote your own account.
 **The two roles get different navigation.** A super admin gets a left sidebar (Dashboard, New
 Order, Order History, Agents, Reports); an agent gets the simpler top header, since they only
 have the order pages. Both collapse to a drawer on a phone.
+
+## Chargebacks
+
+When a customer disputes a charge, a super admin opens the order in the history and uses
+**Mark chargeback**. The penalty — `CHARGEBACK_PENALTY` in `data/site.js`, `$35` — is recorded
+against **the agent who took that order**, read from the order itself rather than chosen, so it
+always lands on the right person.
+
+Where it shows up:
+
+- a **Charged back** badge on the order row, for everyone;
+- a chargeback line on the dashboard (the admin sees everyone's, an agent sees their own);
+- the count and penalty total beside each agent on the **Agents** page;
+- the full list on the agent's profile (**Agents → Profile**), with the order, reason, who
+  marked it and when, plus their net after penalties.
+
+If the dispute is won, **Clear chargeback** stops the penalty counting. Nothing is deleted: the
+fee in force at the time is stored on the order, and every mark and clear is appended to that
+order's `chargebackLog`, so the history survives either way. Changing `CHARGEBACK_PENALTY` only
+affects chargebacks marked afterwards.
 
 ## Reports
 
@@ -169,15 +190,19 @@ app/
   (portal)/orders/new/    the order + charge form
   (portal)/orders/        agent totals + paginated order history (scoped by role)
   (portal)/agents/        super admin: create, edit, activate, archive agents
+  (portal)/agents/[id]/   agent profile: totals, chargebacks, penalties, recent orders
   (portal)/reports/       super admin: month / year totals and CSV downloads
   api/agents/             agent CRUD (super admin only; DELETE archives)
   api/reports/export      CSV download (super admin only)
+  api/orders/[id]/chargeback  mark or clear a chargeback (super admin only)
   api/auth/login|logout   session cookie set / clear
   api/charge              validates the order, calls NMI, saves the approved order
 components/
   OrderForm.js            form state, submit → tokenise → charge
   CardFields.js           Collect.js inline iframes
   AgentsManager.js        super admin's staff table and forms
+  OrderSearch.js          free-text search box over the order history
+  order/ChargebackControl.js  mark / clear a chargeback on one order
   PortalSidebar.js        super admin's left sidebar shell
   ReportPicker.js         report period picker and CSV download links
   AgentStats.js           per-agent totals: today, last month, this month, year
@@ -221,6 +246,10 @@ context/
 - **Every tab shows it is loading**: the clicked link gets an inline spinner (`useLinkStatus`)
   and the content area gets a shape-matched skeleton from that route's `loading.js`. Portal
   pages are all dynamic, so there is always a short wait to cover.
+- **Order history is searchable** (`?q=…`): customer name, company, email, phone (digits are
+  compared, so formatting never matters), city, zip, order reference, transaction id, auth code,
+  invoice number, description, card last four, agent, and an exact amount. Search and paging
+  preserve each other, and an agent's search only ever covers their own orders.
 - **Order history is paginated** at 20 per page, server-side: the controls are plain links to
   `?page=N`, so a page can be bookmarked and works before the JavaScript loads. An out-of-range
   page clamps to the last one rather than erroring.

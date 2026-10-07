@@ -3,6 +3,7 @@ import PageHeader from '@/components/PageHeader';
 import Notice from '@/components/ui/Notice';
 import { requireSuperAdmin } from '@/lib/auth';
 import { listUsers } from '@/lib/users';
+import { loadAgentStats } from '@/lib/orders-db';
 
 export const metadata = {
   title: 'Agents',
@@ -16,8 +17,13 @@ export default async function AgentsPage() {
 
   let users = [];
   let error = null;
+  let chargebacksByAgent = {};
   try {
-    users = await listUsers();
+    const [list, stats] = await Promise.all([listUsers(), loadAgentStats()]);
+    users = list;
+    // Keyed by name: that is what an order records, and it is what the
+    // aggregation groups by.
+    chargebacksByAgent = Object.fromEntries(stats.rows.map((row) => [row.agent, row.chargebacks]));
   } catch (loadError) {
     console.error('[agents] could not load the staff list', loadError);
     error = 'Could not reach the database. Check MONGODB_URI and the Atlas network access list.';
@@ -37,7 +43,7 @@ export default async function AgentsPage() {
           {error}
         </Notice>
       ) : (
-        <AgentsManager users={users} currentUserId={admin.id} />
+        <AgentsManager users={users} currentUserId={admin.id} chargebacks={chargebacksByAgent} />
       )}
     </div>
   );

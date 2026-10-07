@@ -6,9 +6,9 @@ import Panel from '@/components/ui/Panel';
 import { ArrowRightIcon, CheckCircleIcon, AlertIcon, ListIcon, PlusIcon, UserIcon } from '@/components/ui/Icons';
 import { isGatewayConfigured, isTokenizationConfigured } from '@/lib/nmi';
 import { checkDatabaseConnection } from '@/lib/mongodb';
-import { loadAgentStats, loadOrderHistory } from '@/lib/orders-db';
+import { loadAgentStats, loadChargebackSummary, loadOrderHistory } from '@/lib/orders-db';
 import { requireUser } from '@/lib/auth';
-import { cn } from '@/lib/utils';
+import { cn, formatPrice } from '@/lib/utils';
 
 export const metadata = {
   title: 'Dashboard',
@@ -46,10 +46,11 @@ export default async function DashboardPage() {
   // Agents see only their own orders and totals; the super admin sees everyone's.
   const scope = admin ? {} : { agent: { id: user.id, name: user.name } };
 
-  const [database, history, stats] = await Promise.all([
+  const [database, history, stats, chargebacks] = await Promise.all([
     admin ? checkDatabaseConnection() : Promise.resolve(null),
     loadOrderHistory({ limit: 5, ...scope }),
     loadAgentStats(scope),
+    loadChargebackSummary(scope),
   ]);
 
   const checks = admin
@@ -155,6 +156,32 @@ export default async function DashboardPage() {
           </Panel>
         )}
       </div>
+
+      {chargebacks.count > 0 && (
+        <section className="mt-12">
+          <Panel className="flex flex-wrap items-center justify-between gap-4 border-red-500/30 bg-red-500/[0.04]">
+            <div className="flex items-start gap-3">
+              <AlertIcon size={20} className="mt-0.5 shrink-0 text-red-400" />
+              <div className="space-y-1">
+                <p className="text-cream">
+                  {chargebacks.count} {chargebacks.count === 1 ? 'chargeback' : 'chargebacks'} ·{' '}
+                  <span className="text-red-300">{formatPrice(chargebacks.penalty)} in penalties</span>
+                </p>
+                <p className="text-xs text-muted">
+                  {admin
+                    ? 'Recorded against the agents who took those orders. Open an agent to see the detail.'
+                    : 'Recorded against your account.'}
+                </p>
+              </div>
+            </div>
+            {admin && (
+              <Link href="/agents" className="text-xs uppercase tracking-[0.14em] text-gold hover:text-champagne">
+                View agents →
+              </Link>
+            )}
+          </Panel>
+        </section>
+      )}
 
       <section className="mt-12 space-y-5">
         <h2 className="eyebrow">{admin ? 'Agent totals' : 'Your totals'}</h2>

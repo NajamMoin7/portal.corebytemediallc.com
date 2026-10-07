@@ -8,7 +8,9 @@ import Badge from './ui/Badge';
 import Button from './ui/Button';
 import Notice from './ui/Notice';
 import Panel from './ui/Panel';
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, ReceiptIcon } from './ui/Icons';
+import { AlertIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, ReceiptIcon } from './ui/Icons';
+import OrderSearch from './OrderSearch';
+import ChargebackControl from './order/ChargebackControl';
 
 /**
  * Orders from the database, newest first.
@@ -21,7 +23,11 @@ import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CopyIcon, ReceiptIc
  *
  * Paging is server-side: pass `page` and `pageCount` and the controls render
  * as plain links to `?page=N`, so a page can be bookmarked, opened in a new
- * tab and works before the JavaScript loads.
+ * tab and works before the JavaScript loads. Search works the same way
+ * (`?q=…`) — set `searchable` to show the box.
+ *
+ * `canManageChargebacks` adds the super admin's chargeback controls to each
+ * expanded row; agents only ever see that an order was charged back.
  */
 export default function OrderHistory({
   records = [],
@@ -33,6 +39,9 @@ export default function OrderHistory({
   pageCount = 1,
   pageSize = null,
   basePath = '/orders',
+  searchable = false,
+  query = '',
+  canManageChargebacks = false,
 }) {
   const { toast } = useToast();
   const [openId, setOpenId] = useState(null);
@@ -47,22 +56,33 @@ export default function OrderHistory({
     );
   }
 
+  const search = searchable ? (
+    <OrderSearch query={query} basePath={basePath} total={count} />
+  ) : null;
+
   if (records.length === 0) {
     return (
-      <Panel className="flex flex-col items-center gap-4 py-12 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full border border-gold/30 text-gold">
-          <ReceiptIcon size={24} />
-        </span>
-        <div className="space-y-1">
-          <p className="text-cream">No orders yet</p>
-          <p className="max-w-sm text-sm text-muted">
-            Every approved charge is saved here. Refunds and voids are handled in the NMI merchant portal.
-          </p>
-        </div>
-        <Button href="/orders/new" variant="outline" size="sm">
-          Create an order
-        </Button>
-      </Panel>
+      <div className="space-y-5">
+        {search}
+        <Panel className="flex flex-col items-center gap-4 py-12 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full border border-gold/30 text-gold">
+            <ReceiptIcon size={24} />
+          </span>
+          <div className="space-y-1">
+            <p className="text-cream">{query ? 'No matching orders' : 'No orders yet'}</p>
+            <p className="max-w-sm text-sm text-muted">
+              {query
+                ? 'Try a different name, email, phone number or order reference.'
+                : 'Every approved charge is saved here. Refunds and voids are handled in the NMI merchant portal.'}
+            </p>
+          </div>
+          {!query && (
+            <Button href="/orders/new" variant="outline" size="sm">
+              Create an order
+            </Button>
+          )}
+        </Panel>
+      </div>
     );
   }
 
@@ -77,6 +97,8 @@ export default function OrderHistory({
 
   return (
     <div className="space-y-4">
+      {search}
+
       <ul className="space-y-3">
         {records.map((record) => {
           const open = openId === record.id;
@@ -98,6 +120,12 @@ export default function OrderHistory({
                       {record.transactionType === 'auth' ? 'Authorised' : 'Paid'}
                     </Badge>
                     {record.agent && <Badge tone="outline">{record.agent}</Badge>}
+                    {record.chargeback?.status === 'charged_back' && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-red-300">
+                        <AlertIcon size={11} />
+                        Charged back
+                      </span>
+                    )}
                   </p>
                   <p className="mt-1 truncate text-xs text-muted">
                     {formatDateTime(record.createdAt)}
@@ -142,6 +170,19 @@ export default function OrderHistory({
                     <Detail label="Invoice #">{order.invoiceNumber || '—'}</Detail>
                     <Detail label="Description">{order.description || '—'}</Detail>
                     </dl>
+
+                    {(canManageChargebacks || record.chargeback?.status === 'charged_back') && (
+                      <div className="pt-2">
+                        {canManageChargebacks ? (
+                          <ChargebackControl record={record} />
+                        ) : (
+                          <p className="rounded-lg border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs text-red-200">
+                            This order was charged back. A {formatPrice(record.chargeback.penalty || 0)} penalty is
+                            recorded against it.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -181,7 +222,7 @@ export default function OrderHistory({
               : `${count} order${count === 1 ? '' : 's'} on record`}
             . Search NMI by the transaction ID for refunds and voids.
           </p>
-          {pageCount > 1 && <Pagination page={page} pageCount={pageCount} basePath={basePath} />}
+          {pageCount > 1 && <Pagination page={page} pageCount={pageCount} basePath={basePath} query={query} />}
         </div>
       )}
     </div>
@@ -192,8 +233,16 @@ export default function OrderHistory({
  * Page links: first, a window of pages around the current one, and last, so
  * the control stays a fixed width however many pages there are.
  */
-function Pagination({ page, pageCount, basePath }) {
-  const href = (n) => (n === 1 ? basePath : `${basePath}?page=${n}`);
+function Pagination({ page, pageCount, basePath, query = '' }) {
+  // Paging must not drop an active search, or page 2 would silently show
+  // every order again.
+  const href = (n) => {
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (n > 1) params.set('page', String(n));
+    const search = params.toString();
+    return search ? `${basePath}?${search}` : basePath;
+  };
 
   const window = [];
   for (let n = Math.max(1, page - 1); n <= Math.min(pageCount, page + 1); n += 1) window.push(n);

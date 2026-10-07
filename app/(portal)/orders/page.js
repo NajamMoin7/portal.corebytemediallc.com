@@ -20,10 +20,10 @@ export default async function OrdersPage({ searchParams }) {
 
   // Agents see only what they took; the super admin sees every order.
   const scope = admin ? {} : { agent: { id: user.id, name: user.name } };
-  const { page } = await searchParams;
+  const { page, q } = await searchParams;
 
   const [history, stats] = await Promise.all([
-    loadOrderHistory({ limit: PAGE_SIZE, page: Number(page) || 1, ...scope }),
+    loadOrderHistory({ limit: PAGE_SIZE, page: Number(page) || 1, query: q ?? null, ...scope }),
     loadAgentStats(scope),
   ]);
 
@@ -58,6 +58,9 @@ export default async function OrdersPage({ searchParams }) {
         pageCount={history.pageCount}
         pageSize={history.pageSize}
         basePath="/orders"
+        searchable
+        query={history.query ?? ''}
+        canManageChargebacks={admin}
       />
     </div>
   );
