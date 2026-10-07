@@ -8,7 +8,8 @@ const VARIANTS = {
     'border border-gold/45 text-gold hover:border-gold hover:bg-gold/10 hover:text-champagne',
   ghost: 'text-cream/80 hover:text-gold hover:bg-white/5',
   dark: 'bg-charcoal text-cream border border-line hover:border-gold/40 hover:text-gold',
-  danger: 'border border-red-500/40 text-red-300 hover:bg-red-500/10 hover:border-red-500/70',
+  danger:
+    'border border-red-500/50 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:border-red-500/80 hover:text-red-100',
 };
 
 const SIZES = {

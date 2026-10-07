@@ -185,6 +185,27 @@
     color: var(--color-ink);
   }
 
+  /*
+    Tailwind v4's preflight dropped the `cursor: pointer` that v3 put on
+    buttons, so every button in the portal fell back to the browser's arrow
+    and stopped looking clickable. Put it back for anything interactive, and
+    show the blocked cursor when a control is unavailable.
+  */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='radio']:not([aria-disabled='true']),
+  summary,
+  label:has(input[type='checkbox']:not(:disabled)),
+  label:has(input[type='radio']:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled='true'],
+  label:has(input:disabled) {
+    cursor: not-allowed;
+  }
+
   /* Visible, on-brand focus ring for keyboard users only. */
   :focus-visible {
     outline: 2px solid var(--color-gold);
